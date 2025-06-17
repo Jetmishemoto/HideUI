@@ -81,7 +81,7 @@ local hook_definitions = {
         { "app.DialogueManager", "startDialogue", function() startedDialogue = true; print("Player started dialogue") end },
 }
 
-
+--ace.GUIBase`2<app.GUIID.ID,app.GUIFunc.TYPE>.onDestroy()
 --app.cGUIMapFlowCtrl.<>c__DisplayClass31_0.<onClose>b__2(System.Object, ace.GUIBaseCore)
 --ace.GUIBase`2<app.GUIID.ID,app.GUIFunc.TYPE>.toVisible()
 --app.cGUISystemModuleSystemInputOpenController.cGUISystemInputOpenCtrlVoiceChatList.onOpen()
@@ -117,7 +117,7 @@ end
 
 
 -- VoiceChatMenu---------------------------------------------|
-
+-- couldnt find a way to hook the menu open, so we use the controller method
 -- Voice Chat Menu (Keyboard)
 hook_method(
     "app.cGUICommonMenu_VoiceChat",
@@ -163,6 +163,29 @@ end
 --------------------------------------------
 re.on_frame(function()
 
+    local state = nil
+
+    if inCamp then
+        state = "inCamp"
+    elseif mapOpen then
+        state = "mapOpen"
+    elseif menuOpen then
+        state = "menuOpen"
+    elseif gamePaused then
+        state = "gamePaused"
+    elseif itemBar_Open then
+        state = "itemBar_Open"
+    elseif inTent then
+        state = "inTent"    
+    elseif VoiceChatMenu_Open then
+        state = "VoiceChatMenu_Open"
+    elseif startedDialogue then
+        state = "startedDialogue"
+    else
+        state = "hideUI"
+    end
+
+
         --Wait until player is ready
         if not player_ready then
             if getPlayer() ~= nil then
@@ -185,9 +208,11 @@ re.on_frame(function()
         end
 
             -- Main GUI control
+            --Function is not working, need to find a way to force show the HUD
         if forceShowHUD then
             local gui_manager = sdk.get_managed_singleton("app.GUIManager")
             if gui_manager then
+                --Need to find the method to force show the HUD if its e
                 local showHUDMethod = sdk.find_type_definition("app.GUIManager"):get_method("allGUIForceVisible")
                 if showHUDMethod then
                     showHUDMethod:call(gui_manager)
@@ -197,15 +222,45 @@ re.on_frame(function()
             return -- skip the hiding logic this frame
         end
 
-    if not inCamp  and not mapOpen and not menuOpen and not gamePaused and not itemBar_Open and not inTent and not VoiceChatMenu_Open and not startedDialogue then
-        local gui_manager = sdk.get_managed_singleton("app.GUIManager")
-        if not gui_manager then return end
-
-        local method = sdk.find_type_definition("app.GUIManager"):get_method("allGUIForceInvisible")
-        if method then
-            method:call(gui_manager)
+        
+    local actions = {
+        inCamp = function()
+            -- UI should remain visible in camp
+        end,
+        mapOpen = function()
+            -- UI should remain visible on map
+        end,
+        menuOpen = function()
+            -- UI should remain visible when menu is open
+        end,
+        gamePaused = function()
+            -- UI should remain visible when game is paused
+        end,
+        itemBar_Open = function()
+            -- UI should remain visible when item bar is open
+        end,
+        inTent = function()
+            -- UI should remain visible in tent
+        end,
+        VoiceChatMenu_Open = function()
+            -- UI should remain visible when voice chat menu is open
+        end,
+        startedDialogue = function()
+            -- UI should remain visible when dialogue is started
+        end,
+        hideUI = function()
+            local gui_manager = sdk.get_managed_singleton("app.GUIManager")
+            if not gui_manager then return end
+            local method = sdk.find_type_definition("app.GUIManager"):get_method("allGUIForceInvisible")
+            if method then
+                method:call(gui_manager)
+                
+            end
         end
-    end
+    }
+        -- Call the appropriate function based on the state
+        local action = actions[state]
+        if action then action() end
 end)
 -----------------------------------
 -----------------------------------
