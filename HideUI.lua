@@ -5,8 +5,10 @@ local startMenu_Open = false
 local virtualMouseMenu_Open = false
 local campSoundPlayed = false
 local inCamp = false
-local mapOpen = false
+local localMap_Open = false
+local localMapCloseQueued = false
 local worldMap_Open = false
+local mapFromWorldMap = false -- Flag to track if we're transitioning from world map
 local gamePaused = false
 local player_Ready = false
 local itemBar_Open = false
@@ -108,9 +110,8 @@ local hook_definitions = {
             -- Only set to true if it wasn't already open
             virtualMouseMenu_Open = true
             print("Main virtual menu open", virtualMouseMenu_Open)
-
             end
-            
+
         end },
 
         {"app.GUIManager", "requestLifeArea", function()inCamp = true; print("Entered camp")end },
@@ -118,19 +119,29 @@ local hook_definitions = {
 
     -- LocalMap
         { "app.cGUIMapController", "requestOpen", function()
-            mapTransitioning = true -- temporarily block close
-            mapOpen = true
-            mapTransitioningFrames = 10 -- give 10 frames to switch into world map
+            mapTransitioning = true
+            mapTransitioningFrames = 60
+
+            localMap_Open = true
+
+            if mapFromWorldMap then
+            print("Switching from World Map → Local Map")
+            -- stay in world map mode until confirmed transition is done
+            return
+            end
             print("Local Map Opened")
-            
 
         end },
+
         { "app.GUIManager", "close3DMap", function()
-            if virtualMouseMenu_Open or mapTransitioning then
-                    print("Skipping map close — virtualMouseMenu or mapTransitioning is true")
-                return
+            if mapTransitioning and virtualMouseMenu_Open then
+            print("Skipping map close — mapTransitioning still active")
+            localMapCloseQueued = true
+            return
             end
-            mapOpen = false
+
+            -- At this point, either virtualMouseMenu was cleared or it doesn't matter
+            localMap_Open = false
             virtualMouseMenu_Open = false
             print("Local Map closed, options menu closed")
             
@@ -138,13 +149,23 @@ local hook_definitions = {
 
     --World Map
         { "app.GUI060102", "onOpen", function()
-                worldMap_Open = true
-            mapTransitioning = false -- clear transition block
+
+            worldMap_Open = true
+            mapFromWorldMap = true -- flag we're transitioning from world map
+            mapTransitioning = true
+            mapTransitioningFrames = 60
             print("World Map Opened")
                 
         end},
         { "app.GUIManager", "isOpenReadyGUI060102", function()
-            worldMap_Open = false;
+            worldMap_Open = false
+
+            if mapTransitioning then
+                print("World Map closed early — forcibly ending map transition")
+                mapTransitioning = false
+                mapFromWorldMap = false
+                mapTransitioningFrames = 0
+            end
             print("WorldMap Closed")
         end },
 
@@ -160,7 +181,7 @@ local hook_definitions = {
         { "app.GUI040001", "guiDestroy", function() voiceChatMenu_Open = false; print("Voice chat list Closed") end },
 
     -- Npc Dialogue
-        { "app.DialogueManager", "startDialogue", function() startedDialogue = true; print("Player started dialogue") end },
+        -- { "app.DialogueManager", "startDialogue", function() startedDialogue = true; print("Player started dialogue") end },
 }
 
 
@@ -343,30 +364,96 @@ hook_method(
 ---
 
 
+    --Detect end-of-quest
+local missionManager = sdk.get_managed_singleton("app.MissionManager")
+if missionManager then
+    local questDirector = missionManager:call("get_QuestDirector")
+    if questDirector and questDirector:call("IsFinishing") then
+        forceShowHUD = true
+        print("Quest is finishing — restoring HUD")
+    end
+end
 
--- Main frame update
+
+
+
+---------------------------------------
+------------------------
+-- Main frame update-------------------------------
+--------------------
 re.on_frame(function()
-
 
     if not initialized then
         checkIfInCampStartup()
         initialized = true
         print("HideUI initialized",initialized)
     end
- -- Count down map transition grace period
+
+
+
+    local debugUI = true -- Set to true to enable debug output
+
+    if debugUI then
+        print("local mapOpen:", localMap_Open,
+            " | worldMap_Open:", worldMap_Open,
+            " | mapFromWorldMap:", mapFromWorldMap,
+            " | mapTransitioning:", mapTransitioning,
+            " | mapTransitioningFrames:", mapTransitioningFrames)
+    end
+
+
+        --Wait until player is ready
+        if not player_Ready then
+            if getPlayer() ~= nil then
+                player_Ready = true
+                print("Player is ready")
+            end
+            return -- Don't proceed with GUI logic yet
+        end
+
+
+
+--------------
+---3D Map Transition Logic----------------
+-------------
     if mapTransitioning then
         mapTransitioningFrames = mapTransitioningFrames - 1
         if mapTransitioningFrames <= 0 then
             mapTransitioning = false
-            print(" Map transition complete — unblocking map close")
+            mapFromWorldMap = false -- reset after transition ends
+            print("Map transition complete — unblocking")
         end
     end
+        -- Auto-clear virtualMouseMenu_Open after transition
+    if not mapTransitioning and virtualMouseMenu_Open and not localMap_Open and not worldMap_Open then
+        virtualMouseMenu_Open = false
+        print("Cleared lingering virtualMouseMenu_Open flag")
+    end
 
+    if localMap_Open and worldMap_Open then
+        print("[Warning] Both Local and World Map are marked open! Resetting...")
+        -- Reset to local map since it’s the active UI
+        localMap_Open = false
+    end
+
+    if localMapCloseQueued then
+        localMap_Open = false
+        virtualMouseMenu_Open = false
+        print("Closing map after transition delay (queued)")
+        localMapCloseQueued = false
+    end
+
+
+-------------------------------------------------------------------------------
+--------------
+------------State Management----------------
+-------------------------Determine current state based on flags
+-------------
     local state = nil
 
     if inCamp then
         state = "inCamp"
-    elseif mapOpen then
+    elseif localMap_Open then
         state = "mapOpen"
     elseif worldMap_Open then
         state = "worldMap_Open"
@@ -387,41 +474,6 @@ re.on_frame(function()
     end
 
 
-        --Wait until player is ready
-        if not player_Ready then
-            if getPlayer() ~= nil then
-                player_Ready = true
-                print("Player is ready")
-            end
-            return -- Don't proceed with GUI logic yet
-        end
-
-
-
-            --Detect end-of-quest
-        local missionManager = sdk.get_managed_singleton("app.MissionManager")
-        if missionManager then
-            local questDirector = missionManager:call("get_QuestDirector")
-            if questDirector and questDirector:call("IsFinishing") then
-                forceShowHUD = true
-                print("Quest is finishing — restoring HUD")
-            end
-        end
-
-            -- Main GUI control
-            --Function is not working, need to find a way to force show the HUD
-        if forceShowHUD then
-            local gui_manager = sdk.get_managed_singleton("app.GUIManager")
-            if gui_manager then
-                --Need to find the method to force show the HUD if its e
-                local showHUDMethod = sdk.find_type_definition("app.GUIManager"):get_method("allGUIForceVisible")
-                if showHUDMethod then
-                    showHUDMethod:call(gui_manager)
-                    print("HUD force-visible")
-                end
-            end
-            return -- skip the hiding logic this frame
-        end
 
 
     local actions = {
