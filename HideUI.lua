@@ -2,7 +2,7 @@
 local initialized = false
 local forceShowHUD = false
 local startMenu_Open = false
-local otherOptions_Open = false
+local virtualMouseMenuOpen = false
 local campSoundPlayed = false
 local inCamp = false
 local mapOpen = false
@@ -92,7 +92,7 @@ local guiTypes = {
 
 
 
--- Hook list for clean init
+-- Hook list
 local hook_definitions = {
 
 
@@ -100,17 +100,26 @@ local hook_definitions = {
         { "app.GUI030000", "onOpen", function() startMenu_Open = true; print("Opened pause menu") end },
         { "app.GUI030000", "onClose", function() startMenu_Open = false; print("Closed pause menu") end },
 
-    -- Other Menus
-        { "app.GUIManager", "onSetVirtualMouse", function() otherOptions_Open = true; print("Other options menu open") end },
+    -- Virtual Mouse Menus
+        { "app.GUIManager", "onSetVirtualMouse", function()
+            if not virtualMouseMenuOpen then
+                virtualMouseMenuOpen = true
+                print("Other options menu open")
+            end
+        end },
 
         {"app.GUIManager", "requestLifeArea", function()inCamp = true; print("Entered camp")end },
         { "app.GUIManager", "requestStage", function() inCamp = false; print("Left camp") end },
 
-    -- Map
+    -- Local Map
         { "app.cGUIMapController", "requestOpen", function() mapOpen = true; print("Map opened") end },
-        { "app.GUIManager", "close3DMap", function() mapOpen = false; print("Map closed") end },
+        { "app.GUIManager", "close3DMap", function()
+            mapOpen = false
+            virtualMouseMenuOpen = false -- reset here
+            print("Map closed, options menu closed")
+        end },
 
-        --World Map
+    --World Map
         { "app.GUI060102", "onOpen", function() worldMap_Open = true; print("WorldMap Open") end },
         { "app.GUI060102", "onClose", function() worldMap_Open = false; print("WorldMap Closed") end },
 
@@ -268,12 +277,16 @@ re.on_frame(function()
         initialized = true
     end
 
-    if otherOptions_Open then
-        -- If other options menu is open, we don't hide the UI
+   if virtualMouseMenuOpen then
+        -- If virtual mouse menu is open, we want to keep the world map open
+        if not worldMap_Open then
+            print("World map remains open due to virtualMouseMenuOpen")
+        end
         mapOpen = true
         worldMap_Open = true
-        return
+        return -- Skip the rest of the logic if virtual mouse menu is open
     end
+
 
     local state = nil
 
@@ -287,8 +300,6 @@ re.on_frame(function()
         state = "startmenuOpen"
     elseif gamePaused then
         state = "gamePaused"
-        elseif otherOptions_Open then
-        state = "otherOptions_Open"
     elseif itemBar_Open then
         state = "itemBar_Open"
     elseif inTent then
@@ -355,8 +366,8 @@ re.on_frame(function()
         gamePaused = function()
             -- UI should remain visible when game is paused
         end,
-        otherOptions_Open = function()
-            -- UI should remain visible when other options menu is open
+        virtualMouseMenuOpen = function()
+            -- UI should remain visible when virtual mouse menu is open
         end,
         itemBar_Open = function()
             -- UI should remain visible when item bar is open
