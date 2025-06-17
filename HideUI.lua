@@ -2,7 +2,7 @@
 local initialized = false
 local forceShowHUD = false
 local startMenu_Open = false
-local virtualMouseMenuOpen = false
+local virtualMouseMenu_Open = false
 local campSoundPlayed = false
 local inCamp = false
 local mapOpen = false
@@ -15,7 +15,7 @@ local voiceChatMenu_Open = false
 local startedDialogue = false
 
 
-
+local re = require("reframework")
 
 local config = {
     version = "1.0.0",
@@ -102,8 +102,8 @@ local hook_definitions = {
 
     -- Virtual Mouse Menus
         { "app.GUIManager", "onSetVirtualMouse", function()
-            if not virtualMouseMenuOpen then
-                virtualMouseMenuOpen = true
+            if not virtualMouseMenu_Open then
+                virtualMouseMenu_Open = true
                 print("Other options menu open")
             end
         end },
@@ -111,11 +111,11 @@ local hook_definitions = {
         {"app.GUIManager", "requestLifeArea", function()inCamp = true; print("Entered camp")end },
         { "app.GUIManager", "requestStage", function() inCamp = false; print("Left camp") end },
 
-    -- Local Map
+    -- LocalMap
         { "app.cGUIMapController", "requestOpen", function() mapOpen = true; print("Map opened") end },
         { "app.GUIManager", "close3DMap", function()
             mapOpen = false
-            virtualMouseMenuOpen = false -- reset here
+            virtualMouseMenu_Open = false -- reset here
             print("Map closed, options menu closed")
         end },
 
@@ -218,25 +218,32 @@ end
 
 
 
+
+--------------------- Check if player is in camp at startup--------------
 local function checkIfInCampStartup()
     local guiManager = sdk.get_managed_singleton("app.GUIManager")
     if not guiManager then
-        print("⚠️ GUIManager not available at startup")
+        print("GUIManager not available at startup")
         return
     end
 
-    local currentCamp = guiManager:call("requestLifeArea")
+    local playerCurrentlyInCamp = guiManager:call("requestLifeArea")
     local currentStageName = guiManager:call("requestStage")
-    if currentCamp then
+     if playerCurrentlyInCamp then
         inCamp = true
-        print("🟢 Player already in camp on script load")
-    else if currentStageName then
+        print("Player already in camp on script load")
+    elseif currentStageName then
         inCamp = false
-        print("🔵 Player not in camp on script load")
-        end
+        print("Player not in camp on script load")
+    else
+        -- Neither returned valid data
+        inCamp = false
+        print("Couldn't determine camp status on script load")
+        print("in camp status: " .. tostring(inCamp))
     end
+    
 end
-
+-------------------------------------------------------------
 
 
 
@@ -245,6 +252,7 @@ end
 
 
 -- VoiceChatMenu---------------------------------------------|
+
 -- couldnt find a way to hook the menu open, so we use the controller method
 -- Voice Chat Menu (Keyboard)
 hook_method(
@@ -255,8 +263,9 @@ hook_method(
         print("Voice chat menu executed")
     end
 )
-
+--
 -- Voice Chat Menu (Controller)
+--
 hook_method(
     "app.cGUISystemModuleSystemInputOpenController.cGUISystemInputOpenCtrlVoiceChatList",
     "onOpen",
@@ -265,10 +274,14 @@ hook_method(
         print(" Voice chat list opened (controller)")
     end
 )
-
-
-
 --------------------------------------------
+---
+---
+---
+
+
+
+-- Main frame update
 re.on_frame(function()
 
 
@@ -277,7 +290,7 @@ re.on_frame(function()
         initialized = true
     end
 
-   if virtualMouseMenuOpen then
+   if virtualMouseMenu_Open then
         -- If virtual mouse menu is open, we want to keep the world map open
         if not worldMap_Open then
             print("World map remains open due to virtualMouseMenuOpen")
