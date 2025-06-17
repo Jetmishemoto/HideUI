@@ -2,6 +2,7 @@
 local initialized = false
 local forceShowHUD = false
 local startMenu_Open = false
+local startSubMenu_Open = false 
 local virtualMouseMenu_Open = false
 local campSoundPlayed = false
 local inCamp = false
@@ -101,8 +102,10 @@ local hook_definitions = {
 
 
     -- Pause Menu
-        { "app.GUI030000", "onOpen", function() startMenu_Open = true; print("Opened pause menu") end },
+        { "app.GUI030000", "onOpen", function() startSubMenu_Open = false; startMenu_Open = true; print("Opened pause menu") end },
         { "app.GUI030000", "onClose", function() startMenu_Open = false; print("Closed pause menu") end },
+
+        { "app.GUIManager", "instantiatePrefab", function() startSubMenu_Open = true; print("Start SubMenu Open") end },
 
     -- Virtual Mouse Menus
         { "app.GUIManager", "onSetVirtualMouse", function()
@@ -125,9 +128,9 @@ local hook_definitions = {
             localMap_Open = true
 
             if mapFromWorldMap then
-            print("Switching from World Map → Local Map")
-            -- stay in world map mode until confirmed transition is done
-            return
+                print("Switching from World Map → Local Map")
+                -- stay in world map mode until confirmed transition is done
+                return
             end
             print("Local Map Opened")
 
@@ -135,9 +138,9 @@ local hook_definitions = {
 
         { "app.GUIManager", "close3DMap", function()
             if mapTransitioning and virtualMouseMenu_Open then
-            print("Skipping map close — mapTransitioning still active")
-            localMapCloseQueued = true
-            return
+                print("Skipping map close — mapTransitioning still active")
+                localMapCloseQueued = true
+                return
             end
 
             -- At this point, either virtualMouseMenu was cleared or it doesn't matter
@@ -154,8 +157,8 @@ local hook_definitions = {
             mapFromWorldMap = true -- flag we're transitioning from world map
             mapTransitioning = true
             mapTransitioningFrames = 60
+            startSubMenu_Open = false -- close start submenu if open
             print("World Map Opened")
-                
         end},
         { "app.GUIManager", "isOpenReadyGUI060102", function()
             worldMap_Open = false
@@ -215,6 +218,17 @@ local hook_definitions = {
 --app.GUI030000.callOptinalSound_ExecuteDirect()
 --app.GUI040001.onTriggerSoundOpen(System.Boolean)
 --onOpen(app.GUIID.ID, via.gui.Control, System.Boolean, System.Int32)
+
+
+----When quit and save is selected
+--app.GUIManager.getNotifyWindowInfo
+
+--UI Mask when in options menu
+--app.GUIManager.<updatePlCommandMask>b__285_0
+
+--Opening a StartSubMenu
+--app.GUIManager.instantiatePrefab
+
 --------------------
 
 
@@ -312,7 +326,7 @@ end
 --             gamePaused = isPaused
 --             print(isPaused and "⏸ Game paused (hooked)" or "▶ Game resumed (hooked)")
 --         else
---             print("⚠️ Could not get PauseManager")
+--             print("Could not get PauseManager")
 --         end
 --         return retval
 --     end
@@ -325,7 +339,7 @@ hook_method("app.PauseManager", "onAllRequestExecuted", function(retval)
         gamePaused = isPaused
         print(isPaused and "⏸ Game paused (hooked)" or "▶ Game resumed (hooked)")
     else
-        print("⚠️ Could not get PauseManager")
+        print("Could not get PauseManager")
     end
     return retval
 end)
@@ -378,9 +392,10 @@ local function clearLingeringVirtualMouse()
 end
 
 local function resolveConflictingMapStates()
-    if localMap_Open and worldMap_Open then
+    if localMap_Open and worldMap_Open  then
         print("[Warning] Both Local and World Map are marked open! Resetting...")
         -- World map transitioned to local map, so clear world map flag
+       
         worldMap_Open = false
     end
 end
@@ -424,20 +439,7 @@ re.on_frame(function()
         print("HideUI initialized",initialized)
     end
 
-
-
-    local debugUI = true -- Set to true to enable debug output
-
-    if debugUI then
-        print("local mapOpen:", localMap_Open,
-            " | worldMap_Open:", worldMap_Open,
-            " | mapFromWorldMap:", mapFromWorldMap,
-            " | mapTransitioning:", mapTransitioning,
-            " | mapTransitioningFrames:", mapTransitioningFrames)
-    end
-
-
-        --Wait until player is ready
+    --Wait until player is ready
         if not player_Ready then
             if getPlayer() ~= nil then
                 player_Ready = true
@@ -445,6 +447,19 @@ re.on_frame(function()
             end
             return -- Don't proceed with GUI logic yet
         end
+
+
+
+    
+
+    -- if player_Ready then
+    --     print("local mapOpen:", localMap_Open,
+    --         " | worldMap_Open:", worldMap_Open,
+    --         " | mapFromWorldMap:", mapFromWorldMap,
+    --         " | mapTransitioning:", mapTransitioning,
+    --         " | mapTransitioningFrames:", mapTransitioningFrames)
+    -- end
+
 
 
 
@@ -458,10 +473,10 @@ re.on_frame(function()
             print("Map transition complete — unblocking")
         end
     end
-     -- Clear any leftover virtual mouse state
+    -- Clear any leftover virtual mouse state
     clearLingeringVirtualMouse()
 
-    -- Sanity check: only one map type should be open
+    -- only one map type should be open
     resolveConflictingMapStates()
 
     -- Handle any queued map close
@@ -482,6 +497,8 @@ re.on_frame(function()
         state = "worldMap_Open"
     elseif startMenu_Open then
         state = "startmenuOpen"
+    elseif startSubMenu_Open then
+        state = "startSubMenu_Open"
     elseif gamePaused then
         state = "gamePaused"
     elseif itemBar_Open then
@@ -503,7 +520,7 @@ re.on_frame(function()
         inCamp = function()
             -- UI should remain visible in camp
         end,
-        mapOpen = function()
+        localMap_Open = function()
             -- UI should remain visible on map
         end,
         worldMap_Open = function()
@@ -511,6 +528,9 @@ re.on_frame(function()
         end,
         menuOpen = function()
             -- UI should remain visible when menu is open
+        end,
+        startSubMenu_Open = function()
+            -- UI should remain visible when start submenu is open
         end,
         gamePaused = function()
             -- UI should remain visible when game is paused
