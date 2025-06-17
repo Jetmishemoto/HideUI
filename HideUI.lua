@@ -360,8 +360,43 @@ hook_method(
 )
 --------------------------------------------
 ---
----
----
+
+--------
+---Map Transition Logic Methods--------------------------
+--------------
+local function finishMapTransition()
+    mapTransitioning = false
+    mapFromWorldMap = false
+    print("Map transition complete — unblocking")
+end
+
+local function clearLingeringVirtualMouse()
+    if not mapTransitioning and virtualMouseMenu_Open and not localMap_Open and not worldMap_Open then
+        virtualMouseMenu_Open = false
+        print("Cleared lingering virtualMouseMenu_Open flag")
+    end
+end
+
+local function resolveConflictingMapStates()
+    if localMap_Open and worldMap_Open then
+        print("[Warning] Both Local and World Map are marked open! Resetting...")
+        -- World map transitioned to local map, so clear world map flag
+        worldMap_Open = false
+    end
+end
+
+local function finalizeQueuedMapClose()
+    if localMapCloseQueued then
+        localMap_Open = false
+        virtualMouseMenu_Open = false
+        localMapCloseQueued = false
+        print("Closing map after transition delay (queued)")
+    end
+end
+---------------------------------------------
+
+
+
 
 
     --Detect end-of-quest
@@ -419,30 +454,18 @@ re.on_frame(function()
     if mapTransitioning then
         mapTransitioningFrames = mapTransitioningFrames - 1
         if mapTransitioningFrames <= 0 then
-            mapTransitioning = false
-            mapFromWorldMap = false -- reset after transition ends
+            finishMapTransition()
             print("Map transition complete — unblocking")
         end
     end
-        -- Auto-clear virtualMouseMenu_Open after transition
-    if not mapTransitioning and virtualMouseMenu_Open and not localMap_Open and not worldMap_Open then
-        virtualMouseMenu_Open = false
-        print("Cleared lingering virtualMouseMenu_Open flag")
-    end
+     -- Clear any leftover virtual mouse state
+    clearLingeringVirtualMouse()
 
-    if localMap_Open and worldMap_Open then
-        print("[Warning] Both Local and World Map are marked open! Resetting...")
-        -- Reset to local map since it’s the active UI
-        localMap_Open = false
-    end
+    -- Sanity check: only one map type should be open
+    resolveConflictingMapStates()
 
-    if localMapCloseQueued then
-        localMap_Open = false
-        virtualMouseMenu_Open = false
-        print("Closing map after transition delay (queued)")
-        localMapCloseQueued = false
-    end
-
+    -- Handle any queued map close
+    finalizeQueuedMapClose()
 
 -------------------------------------------------------------------------------
 --------------
