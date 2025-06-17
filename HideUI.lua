@@ -1,13 +1,13 @@
 
 local forceShowHUD = false
-local menuOpen = false
+local startMenu_Open = false
 local inCamp = false
 local mapOpen = false
 local gamePaused = false
-local player_ready = false
+local player_Ready = false
 local itemBar_Open = false
 local inTent = false
-local VoiceChatMenu_Open = false
+local voiceChatMenu_Open = false
 local startedDialogue = false
 
 
@@ -40,7 +40,36 @@ local guiTypes = {
     "app.GUI020004", "app.GUI020003", "app.GUI020006",
     "app.GUI020009"
 }
+--app.GUI030000Accessor
+---Item bar PopUP
+--app.GUI020012
 
+---QuestList on Right
+--app.GUI020018
+
+--Player names
+--app.GUI020016
+
+
+--MapDarkring
+--app.GUI060010
+--Map
+--app.GUI060011
+
+---Sharpness Bar
+--app.GUI020015
+
+--Player Stam Bar
+--app.GUI020004
+
+--Player HP Bar
+--app.GUI020003
+
+--ItemBar bottom right
+--app.GUI020006
+
+--Time of day bottomLeft
+--app.GUI020009
 
 
 
@@ -50,8 +79,8 @@ local hook_definitions = {
 
 
     -- Pause Menu
-        { "app.GUI030000", "onOpen", function() menuOpen = true; print("Opened pause menu") end },
-        { "app.GUI030000", "onClose", function() menuOpen = false; print("Closed pause menu") end },
+        { "app.GUI030000", "onOpen", function() startMenu_Open = true; print("Opened pause menu") end },
+        { "app.GUI030000", "onClose", function() startMenu_Open = false; print("Closed pause menu") end },
 
     -- Camp
         { "app.GUIManager", "requestLifeArea", function() inCamp = true; forceShowHUD = false; print("Entered camp") end },
@@ -75,12 +104,13 @@ local hook_definitions = {
         { "app.cGUISystemModuleOpenTentMenu", "exitTent(app.FacilityMenu.TYPE)", function() inTent = false; print("Exiting Tent") end },
 
     -- VoiceChatMenu
-        { "app.cGUIMapFlowCtrl", "openRadarMaskGUI", function() VoiceChatMenu_Open = false; print("Voice chat list Closed") end },
+        { "app.cGUIMapFlowCtrl", "openRadarMaskGUI", function() voiceChatMenu_Open = false; print("Voice chat list Closed") end },
 
     -- Npc Dialogue
         { "app.DialogueManager", "startDialogue", function() startedDialogue = true; print("Player started dialogue") end },
 }
 
+--app.cGUICommonMenu_VoiceChat.get_OpenGUIID()
 --ace.GUIBase`2<app.GUIID.ID,app.GUIFunc.TYPE>.onDestroy()
 --app.cGUIMapFlowCtrl.<>c__DisplayClass31_0.<onClose>b__2(System.Object, ace.GUIBaseCore)
 --ace.GUIBase`2<app.GUIID.ID,app.GUIFunc.TYPE>.toVisible()
@@ -123,7 +153,7 @@ hook_method(
     "app.cGUICommonMenu_VoiceChat",
     "execute(app.MenuDef.ExecuteFrom, System.Object, app.cGUICommonMenuItemExecuteOptionBase, ace.IGUIFlowHandle)",
     function(args)
-        VoiceChatMenu_Open = true
+        voiceChatMenu_Open = true
         print("Voice chat menu executed")
     end
 )
@@ -133,7 +163,7 @@ hook_method(
     "app.cGUISystemModuleSystemInputOpenController.cGUISystemInputOpenCtrlVoiceChatList",
     "onOpen",
     function(args)
-        VoiceChatMenu_Open = true
+        voiceChatMenu_Open = true
         print(" Voice chat list opened (controller)")
     end
 )
@@ -141,6 +171,10 @@ hook_method(
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
+
+
+
+
 -- Get player
 local function getPlayer()
     local playerManager = sdk.get_managed_singleton("app.PlayerManager")
@@ -169,16 +203,16 @@ re.on_frame(function()
         state = "inCamp"
     elseif mapOpen then
         state = "mapOpen"
-    elseif menuOpen then
-        state = "menuOpen"
+    elseif startMenu_Open then
+        state = "startmenuOpen"
     elseif gamePaused then
         state = "gamePaused"
     elseif itemBar_Open then
         state = "itemBar_Open"
     elseif inTent then
         state = "inTent"    
-    elseif VoiceChatMenu_Open then
-        state = "VoiceChatMenu_Open"
+    elseif voiceChatMenu_Open then
+        state = "voiceChatMenu_Open"
     elseif startedDialogue then
         state = "startedDialogue"
     else
@@ -187,9 +221,9 @@ re.on_frame(function()
 
 
         --Wait until player is ready
-        if not player_ready then
+        if not player_Ready then
             if getPlayer() ~= nil then
-                player_ready = true
+                player_Ready = true
                 print("Player is ready")
             end
             return -- Don't proceed with GUI logic yet
@@ -222,7 +256,7 @@ re.on_frame(function()
             return -- skip the hiding logic this frame
         end
 
-        
+
     local actions = {
         inCamp = function()
             -- UI should remain visible in camp
