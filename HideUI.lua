@@ -1,8 +1,12 @@
 
+local initialized = false
 local forceShowHUD = false
 local startMenu_Open = false
+local otherOptions_Open = false
+local campSoundPlayed = false
 local inCamp = false
 local mapOpen = false
+local worldMap_Open = false
 local gamePaused = false
 local player_Ready = false
 local itemBar_Open = false
@@ -13,6 +17,23 @@ local startedDialogue = false
 
 
 
+local config = {
+    version = "1.0.0",
+    hideUI = true, -- Default to hiding UI
+    showInCamp = false, -- Default to not showing UI in camp
+    showInMap = false, -- Default to not showing UI on map
+    showInWorldMap = false, -- Default to not showing UI on world map
+    showInMenu = false, -- Default to not showing UI when menu is open
+    showInPause = false, -- Default to not showing UI when game is paused
+    showInItemBar = false, -- Default to not showing UI when item bar is open
+    showInTent = false, -- Default to not showing UI in tent
+    showInVoiceChatMenu = false, -- Default to not showing UI when voice chat menu is open
+    showInDialogue = false, -- Default to not showing UI when dialogue is started
+}
+-- -- Path to the config file
+-- local configPath = re.get_config_dir() .. "/HideUIConfig.json"
+-- local json = require("json")
+
 
 local function fixConfig()
     if config.version ~= "1.0.0" then
@@ -21,17 +42,14 @@ local function fixConfig()
     end
 end
 
-do
-    if json then
-        local file = json.load_file(configPath)
-        if file then config = file; fixConfig()
-        else json.dump_file(configPath, config) end
-    end
-end
 
-
-
-local drawFieldCache = {}
+-- do
+--     if json then
+--         local file = json.load_file(configPath)
+--         if file then config = file; fixConfig()
+--         else json.dump_file(configPath, config) end
+--     end
+-- end
 
 
 local guiTypes = {
@@ -82,14 +100,19 @@ local hook_definitions = {
         { "app.GUI030000", "onOpen", function() startMenu_Open = true; print("Opened pause menu") end },
         { "app.GUI030000", "onClose", function() startMenu_Open = false; print("Closed pause menu") end },
 
-    -- Camp
-        { "app.GUIManager", "requestLifeArea", function() inCamp = true; forceShowHUD = false; print("Entered camp") end },
+    -- Other Menus
+        { "app.GUIManager", "onSetVirtualMouse", function() otherOptions_Open = true; print("Other options menu open") end },
+
+        {"app.GUIManager", "requestLifeArea", function()inCamp = true; print("Entered camp")end },
         { "app.GUIManager", "requestStage", function() inCamp = false; print("Left camp") end },
 
     -- Map
-    
         { "app.cGUIMapController", "requestOpen", function() mapOpen = true; print("Map opened") end },
         { "app.GUIManager", "close3DMap", function() mapOpen = false; print("Map closed") end },
+
+        --World Map
+        { "app.GUI060102", "onOpen", function() worldMap_Open = true; print("WorldMap Open") end },
+        { "app.GUI060102", "onClose", function() worldMap_Open = false; print("WorldMap Closed") end },
 
     -- Game Pause (Specialty Guide UI)
         { "app.GUIManager", "onOpenSpecialtyGuideUI", function() gamePaused = true; print("Game paused") end },
@@ -104,19 +127,34 @@ local hook_definitions = {
         { "app.cGUISystemModuleOpenTentMenu", "exitTent(app.FacilityMenu.TYPE)", function() inTent = false; print("Exiting Tent") end },
 
     -- VoiceChatMenu
-        { "app.cGUIMapFlowCtrl", "openRadarMaskGUI", function() voiceChatMenu_Open = false; print("Voice chat list Closed") end },
+        { "app.GUI040001", "guiDestroy", function() voiceChatMenu_Open = false; print("Voice chat list Closed") end },
 
     -- Npc Dialogue
         { "app.DialogueManager", "startDialogue", function() startedDialogue = true; print("Player started dialogue") end },
 }
 
+
+-------------------Functions we might want to hook
 --app.cGUICommonMenu_VoiceChat.get_OpenGUIID()
 --ace.GUIBase`2<app.GUIID.ID,app.GUIFunc.TYPE>.onDestroy()
---app.cGUIMapFlowCtrl.<>c__DisplayClass31_0.<onClose>b__2(System.Object, ace.GUIBaseCore)
+
 --ace.GUIBase`2<app.GUIID.ID,app.GUIFunc.TYPE>.toVisible()
---app.cGUISystemModuleSystemInputOpenController.cGUISystemInputOpenCtrlVoiceChatList.onOpen()
+
+--app.cGUIMenuShutdownCtrl.isCutScenePlaying
+
+--app.GUI060102.onOpen()
+--app.cGUICommonMenu_ItemPouch.get_OpenGUIID
+
+--app.GUIManager.<updatePlCommandMask>b__285_0
+--app.GUIManager.getWishlistItemFlagTable
+--app.GUIBaseApp.doOnDestroyApp
 
 
+--Trigger menu sound
+--app.GUI030000.callOptinalSound_ExecuteDirect()
+--app.GUI040001.onTriggerSoundOpen(System.Boolean)
+--onOpen(app.GUIID.ID, via.gui.Control, System.Boolean, System.Int32)
+--------------------
 
 
 -- hook helper
@@ -146,6 +184,57 @@ end
 
 
 
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+
+
+
+
+-- Get player
+local function getPlayer()
+    local playerManager = sdk.get_managed_singleton("app.PlayerManager")
+    if not playerManager then return nil end
+    return playerManager:call("getMasterPlayer")
+end
+
+--  check if communication menu is open
+local function isCommunicationOpen()
+    local util = sdk.find_type_definition("app.CommunicationUtil")
+    if not util then return false end
+    local method = util:get_method("isOpen")
+    if not method then return false end
+    return method:call(nil)
+end
+
+
+
+local function checkIfInCampStartup()
+    local guiManager = sdk.get_managed_singleton("app.GUIManager")
+    if not guiManager then
+        print("⚠️ GUIManager not available at startup")
+        return
+    end
+
+    local currentCamp = guiManager:call("requestLifeArea")
+    local currentStageName = guiManager:call("requestStage")
+    if currentCamp then
+        inCamp = true
+        print("🟢 Player already in camp on script load")
+    else if currentStageName then
+        inCamp = false
+        print("🔵 Player not in camp on script load")
+        end
+    end
+end
+
+
+
+
+
+
+
+
 -- VoiceChatMenu---------------------------------------------|
 -- couldnt find a way to hook the menu open, so we use the controller method
 -- Voice Chat Menu (Keyboard)
@@ -168,34 +257,23 @@ hook_method(
     end
 )
 
--------------------------------------------------------------------------------
--------------------------------------------------------------------------------
--------------------------------------------------------------------------------
-
-
-
-
--- Get player
-local function getPlayer()
-    local playerManager = sdk.get_managed_singleton("app.PlayerManager")
-    if not playerManager then return nil end
-    return playerManager:call("getMasterPlayer")
-end
-
-
---  check if communication menu is open
-local function isCommunicationOpen()
-    local util = sdk.find_type_definition("app.CommunicationUtil")
-    if not util then return false end
-    local method = util:get_method("isOpen")
-    if not method then return false end
-    return method:call(nil)
-end
-
 
 
 --------------------------------------------
 re.on_frame(function()
+
+
+    if not initialized then
+        checkIfInCampStartup()
+        initialized = true
+    end
+
+    if otherOptions_Open then
+        -- If other options menu is open, we don't hide the UI
+        mapOpen = true
+        worldMap_Open = true
+        return
+    end
 
     local state = nil
 
@@ -203,10 +281,14 @@ re.on_frame(function()
         state = "inCamp"
     elseif mapOpen then
         state = "mapOpen"
+    elseif worldMap_Open then
+        state = "worldMap_Open"
     elseif startMenu_Open then
         state = "startmenuOpen"
     elseif gamePaused then
         state = "gamePaused"
+        elseif otherOptions_Open then
+        state = "otherOptions_Open"
     elseif itemBar_Open then
         state = "itemBar_Open"
     elseif inTent then
@@ -264,11 +346,17 @@ re.on_frame(function()
         mapOpen = function()
             -- UI should remain visible on map
         end,
+        worldMap_Open = function()
+            -- UI should remain visible on world map
+        end,
         menuOpen = function()
             -- UI should remain visible when menu is open
         end,
         gamePaused = function()
             -- UI should remain visible when game is paused
+        end,
+        otherOptions_Open = function()
+            -- UI should remain visible when other options menu is open
         end,
         itemBar_Open = function()
             -- UI should remain visible when item bar is open
@@ -316,3 +404,73 @@ end)
 --app.cLifeAreaInfo.update()
 --app.HunterZoneController.update()
 --app.GUIManager.requestLifeArea
+
+
+
+-- local function playMenuSound()
+
+--     print("🏕️ Entered camp")
+
+--         local gui_manager = sdk.get_managed_singleton("app.GUIManager")
+--     if not gui_manager then
+--         print("❌ GUIManager not found")
+--         return
+--     end
+
+--     -- Get GUI030000Accessor field
+--     local accessor = gui_manager:get_field("<GUI030000Accessor>k__BackingField")
+--     if not accessor then
+--         print("❌ GUI030000Accessor field not found")
+--         return
+--     end
+
+--     -- Access GUI030000 component
+--     local components = accessor:get_field("Components")
+    
+--             local accessor_type = accessor:get_type_definition()
+--         for i, field in ipairs(accessor_type:get_fields()) do
+--             print(string.format("Field %d: %s", i, field:get_name()))
+--         end-- usually something like `Array<GUIBase<...>>`
+--     if not components then
+--         print("❌ Could not access components from accessor")
+--         return
+--     end
+
+--     -- We'll scan for GUI030000 instance
+--     local gui030000_instance = nil
+
+--     for i = 0, components:get_size() - 1 do
+--         local comp = components:get_element(i)
+--         if comp and comp:get_type_definition():get_full_name() == "app.GUI030000" then
+--             gui030000_instance = comp
+--             break
+--         end
+--     end
+
+--     if not gui030000_instance then
+--         print("❌ app.GUI030000 instance not found in accessor components")
+--         return
+--     end
+
+--     -- Now invoke the sound method
+--     local gui030000_type = sdk.find_type_definition("app.GUI030000")
+--     local sound_method = gui030000_type and gui030000_type:get_method("callOptinalSound_ExecuteDirect()")
+
+--     if not sound_method then
+--         print("❌ Method callOptinalSound_ExecuteDirect not found")
+--         return
+--     end
+
+--     -- Call it!
+--     local success, err = pcall(function()
+--         sound_method:call(gui030000_instance)
+--     end)
+
+--     if success then
+--         print("✅ Camp enter sound played")
+--     else
+--         print("❌ Error playing sound:", err)
+--     end
+
+    
+-- end
