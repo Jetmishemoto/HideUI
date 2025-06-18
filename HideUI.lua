@@ -2,7 +2,9 @@
 local initialized = false
 local forceShowHUD = false
 local startMenu_Open = false
-local startSubMenu_Open = false 
+local startSubMenu_Open = false
+local startSubMenuTimer = 0
+local START_SUB_MENU_TIMEOUT = 60
 local virtualMouseMenu_Open = false
 local campSoundPlayed = false
 local inCamp = false
@@ -10,7 +12,7 @@ local localMap_Open = false
 local localMapCloseQueued = false
 local worldMap_Open = false
 local mapFromWorldMap = false -- Flag to track if we're transitioning from world map
-local gamePaused = false
+local gameIsPaused = false
 local player_Ready = false
 local itemBar_Open = false
 local inTent = false
@@ -18,6 +20,7 @@ local voiceChatMenu_Open = false
 local startedDialogue = false
 local mapTransitioning = false
 local mapTransitioningFrames = 0
+local IsFinishingQuest = false 
 
 
 
@@ -95,145 +98,11 @@ local guiTypes = {
 
 
 
----------
----------⌈→→Hook list←←⌉--------------
----------
-local hook_definitions = {
 
-
-    -- Pause Menu
-        { "app.GUI030000", "onOpen", function() startSubMenu_Open = false; startMenu_Open = true; print("Opened pause menu") end },
-        { "app.GUI030000", "onClose", function() startMenu_Open = false; print("Closed pause menu") end },
-
-        { "app.GUIManager", "instantiatePrefab", function() startSubMenu_Open = true; print("Start SubMenu Open") end },
-
-    -- Virtual Mouse Menus
-        { "app.GUIManager", "onSetVirtualMouse", function()
-            if not virtualMouseMenu_Open then
-            -- Only set to true if it wasn't already open
-            virtualMouseMenu_Open = true
-            print("Main virtual menu open", virtualMouseMenu_Open)
-            end
-
-        end },
-
-        {"app.GUIManager", "requestLifeArea", function()inCamp = true; print("Entered camp")end },
-        { "app.GUIManager", "requestStage", function() inCamp = false; print("Left camp") end },
-
-    -- LocalMap
-        { "app.cGUIMapController", "requestOpen", function()
-            mapTransitioning = true
-            mapTransitioningFrames = 60
-
-            localMap_Open = true
-
-            if mapFromWorldMap then
-                print("Switching from World Map → Local Map")
-                -- stay in world map mode until confirmed transition is done
-                return
-            end
-            print("Local Map Opened")
-
-        end },
-
-        { "app.GUIManager", "close3DMap", function()
-            if mapTransitioning and virtualMouseMenu_Open then
-                print("Skipping map close — mapTransitioning still active")
-                localMapCloseQueued = true
-                return
-            end
-
-            -- At this point, either virtualMouseMenu was cleared or it doesn't matter
-            localMap_Open = false
-            virtualMouseMenu_Open = false
-            print("Local Map closed, options menu closed")
-            
-        end },
-
-    --World Map
-        { "app.GUI060102", "onOpen", function()
-
-            worldMap_Open = true
-            mapFromWorldMap = true -- flag we're transitioning from world map
-            mapTransitioning = true
-            mapTransitioningFrames = 60
-            startSubMenu_Open = false -- close start submenu if open
-            print("World Map Opened")
-        end},
-        { "app.GUIManager", "isOpenReadyGUI060102", function()
-            worldMap_Open = false
-
-            if mapTransitioning then
-                print("World Map closed early — forcibly ending map transition")
-                mapTransitioning = false
-                mapFromWorldMap = false
-                mapTransitioningFrames = 0
-            end
-            print("WorldMap Closed")
-        end },
-
-    -- Item Bar
-        { "app.GUI020008", "onOpenApp", function() itemBar_Open = true; print("Item bar opened") end },
-        { "app.GUI020008PartsPallet", "close", function() itemBar_Open = false; print("Item bar closed") end },
-
-    -- Tent
-        { "app.GUIManager", "startTentMenu", function() inTent = true; print("In Tent") end },
-        { "app.cGUISystemModuleOpenTentMenu", "exitTent(app.FacilityMenu.TYPE)", function() inTent = false; print("Exiting Tent") end },
-
-    -- VoiceChatMenu
-        { "app.GUI040001", "guiDestroy", function() voiceChatMenu_Open = false; print("Voice chat list Closed") end },
-
-    -- Npc Dialogue
-        -- { "app.DialogueManager", "startDialogue", function() startedDialogue = true; print("Player started dialogue") end },
-}
-
-
-
-
--------------------Functions we might want to hook
----
----  -- -- Game Pause (Specialty Guide UI)
-    --     { "app.GUIManager", "onOpenSpecialtyGuideUI", function() gamePaused = true; print("Game paused") end },
-    --     { "app.GUIManager", "setupEnergyGauge", function() gamePaused = false; print("Game resumed") end },
-
---app.cGUICommonMenu_VoiceChat.get_OpenGUIID()
---ace.GUIBase`2<app.GUIID.ID,app.GUIFunc.TYPE>.onDestroy()
-
---ace.GUIBase`2<app.GUIID.ID,app.GUIFunc.TYPE>.toVisible()
-
---app.cGUIMenuShutdownCtrl.isCutScenePlaying
-
---app.GUI060102.onOpen()
---app.cGUICommonMenu_ItemPouch.get_OpenGUIID
-
---app.GUIManager.<updatePlCommandMask>b__285_0
---app.GUIManager.getWishlistItemFlagTable
-
-
-
---Bounty List from pause menu
---app.GUI090800.onOpen()
-
---Trigger menu sound
---app.GUI030000.callOptinalSound_ExecuteDirect()
---app.GUI040001.onTriggerSoundOpen(System.Boolean)
---onOpen(app.GUIID.ID, via.gui.Control, System.Boolean, System.Int32)
-
-
-----When quit and save is selected
---app.GUIManager.getNotifyWindowInfo
-
---UI Mask when in options menu
---app.GUIManager.<updatePlCommandMask>b__285_0
-
---Opening a StartSubMenu
---app.GUIManager.instantiatePrefab
-
---------------------
 
 
 -------------
--- ⌈→→hook helper←←⌉---------------
+---⌈→→hook helper←←⌉---------------
 ------------
 local function hook_method(type_str, method_str, callback)
     local t = sdk.find_type_definition(type_str)
@@ -294,8 +163,9 @@ local function checkIfInCampStartup()
         return
     end
 
-    local playerCurrentlyInCamp = guiManager:call("requestLifeArea")
     local currentStageName = guiManager:call("requestStage")
+    local playerCurrentlyInCamp = guiManager:call("requestLifeArea")
+
     if playerCurrentlyInCamp then
         inCamp = true
         print("Player already in camp on script load")
@@ -310,34 +180,142 @@ local function checkIfInCampStartup()
     end
     
 end
--------------------------------------------------------------
 
----PauseManager Hook--
 
--- sdk.hook(
---     sdk.find_type_definition("app.PauseManager"):get_method("onAllRequestExecuted"),
---     function(args) -- before call (optional)
---         return sdk.PreHookResult.CALL
---     end,
---     function(retval) -- after call
---         local pauseManager = sdk.get_managed_singleton("app.PauseManager")
---         if pauseManager then
---             local isPaused = pauseManager:call("get_IsPaused")
---             gamePaused = isPaused
---             print(isPaused and "⏸ Game paused (hooked)" or "▶ Game resumed (hooked)")
---         else
---             print("Could not get PauseManager")
---         end
---         return retval
---     end
--- )
+---------
+---------⌈→→Hook list←←⌉--------------
+---------
+local hook_definitions = {
 
+
+    -- Pause Menu-----------------------------------------------------------
+        { "app.GUI030000", "onOpen", function() startSubMenu_Open = false; startMenu_Open = true; print("Opened pause menu") end },
+        { "app.GUI030000", "onClose", function() startMenu_Open = false; print("Closed pause menu") end },
+
+        { "app.GUIManager", "instantiatePrefab", function()
+            startSubMenu_Open = true
+            startSubMenuTimer = START_SUB_MENU_TIMEOUT
+            print("Start SubMenu Open — timer started")
+            print("Start SubMenu Open")
+
+        end },
+----------------------------------------------------------------------------------
+---
+    -- Virtual Mouse Menus-----------------------------------------------
+        { "app.GUIManager", "onSetVirtualMouse", function()
+            if not virtualMouseMenu_Open then
+            -- Only set to true if it wasn't already open
+            virtualMouseMenu_Open = true
+            print("Main virtual menu open", virtualMouseMenu_Open)
+            end
+
+        end },
+
+----------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------
+
+    --Camp Area
+        {"app.GUIManager", "requestLifeArea", function()inCamp = true; print("Entered camp")end },
+        { "app.GUIManager", "requestStage", function() inCamp = false; print("Left camp") end },
+
+----------------------------------------------------------------------------------------------------------
+---
+------------------------
+    -- LocalMap---------------------------------------------------------
+        { "app.cGUIMapController", "requestOpen", function()
+            mapTransitioning = true
+            mapTransitioningFrames = 60
+
+            localMap_Open = true
+
+            if mapFromWorldMap then
+                print("Switching from World Map → Local Map")
+                -- stay in world map mode until confirmed transition is done
+                return
+            end
+            print("Local Map Opened")
+
+        end },
+
+        { "app.GUIManager", "close3DMap", function()
+            if mapTransitioning and virtualMouseMenu_Open then
+                print("Skipping map close — mapTransitioning still active")
+                localMapCloseQueued = true
+                return
+            end
+
+            -- At this point, either virtualMouseMenu was cleared or it doesn't matter
+            localMap_Open = false
+            virtualMouseMenu_Open = false
+            print("Local Map closed, options menu closed")
+            
+        end },
+----------------------------------------------------------------------------------------------------------
+
+    --World Map----------------------------------------------------
+        { "app.GUI060102", "onOpen", function()
+
+            worldMap_Open = true
+            mapFromWorldMap = true -- flag we're transitioning from world map
+            mapTransitioning = true
+            mapTransitioningFrames = 60
+            startSubMenu_Open = false -- close start submenu if open
+            print("World Map Opened")
+        end},
+        { "app.GUIManager", "isOpenReadyGUI060102", function()
+            worldMap_Open = false
+            if mapTransitioning then
+                print("World Map closed early — forcibly ending map transition")
+                mapTransitioning = false
+                mapFromWorldMap = false
+                mapTransitioningFrames = 0
+            end
+            print("WorldMap Closed")
+        end },
+----------------------------------------------------------------------------------------------------------
+---
+    -- Item Bar---------------------------------------------------
+        { "app.GUI020008", "onOpenApp", function() itemBar_Open = true; print("Item bar opened") end },
+        { "app.GUI020008PartsPallet", "close", function() itemBar_Open = false; print("Item bar closed") end },
+----------------------------------------------------------------------------------
+---
+    -- Tent-------------------------------------------------------
+        { "app.GUIManager", "startTentMenu", function()
+
+            inTent = true
+            print("In Tent")
+
+        end },
+        { "app.cGUISystemModuleOpenTentMenu", "exitTent(app.FacilityMenu.TYPE)",
+            function()
+
+                inTent = false
+                print("Exiting Tent")
+
+        end },
+----------------------------------------------------------------------------------
+---
+    -- VoiceChatMenu----------------------------------------------
+        { "app.GUI040001", "guiDestroy", function() voiceChatMenu_Open = false; print("Voice chat list Closed") end },
+
+    -- Npc Dialogue
+        -- { "app.DialogueManager", "startDialogue", function() startedDialogue = true; print("Player started dialogue") end },
+}
+
+
+-----PauseManager-----------------------------
 hook_method("app.PauseManager", "onAllRequestExecuted", function(retval)
+
+    if inTent then
+        print("Don't change pause state if in tent")
+        return
+    end
+
     local pauseManager = sdk.get_managed_singleton("app.PauseManager")
     if pauseManager then
         local isPaused = pauseManager:call("get_IsPaused")
-        gamePaused = isPaused
-        print(isPaused and "⏸ Game paused (hooked)" or "▶ Game resumed (hooked)")
+        gameIsPaused = isPaused
+        print(isPaused and "PauseManager.Game paused" or "PauseManager.Game resumed")
     else
         print("Could not get PauseManager")
     end
@@ -345,7 +323,7 @@ hook_method("app.PauseManager", "onAllRequestExecuted", function(retval)
 end)
 -------------------------------------------------------------
 
-
+--app.PauseManager.setRayTracePause
 
 
 
@@ -395,7 +373,6 @@ local function resolveConflictingMapStates()
     if localMap_Open and worldMap_Open  then
         print("[Warning] Both Local and World Map are marked open! Resetting...")
         -- World map transitioned to local map, so clear world map flag
-       
         worldMap_Open = false
     end
 end
@@ -419,6 +396,7 @@ local missionManager = sdk.get_managed_singleton("app.MissionManager")
 if missionManager then
     local questDirector = missionManager:call("get_QuestDirector")
     if questDirector and questDirector:call("IsFinishing") then
+        IsFinishingQuest = true
         forceShowHUD = true
         print("Quest is finishing — restoring HUD")
     end
@@ -461,11 +439,20 @@ re.on_frame(function()
     -- end
 
 
+    
+    if startSubMenu_Open then
+        startSubMenuTimer = startSubMenuTimer - 1
+        if startSubMenuTimer <= 0 then
+            startSubMenu_Open = false
+            print("Start SubMenu auto-closed (timer expired)")
+        end
+    end
 
 
---------------
----3D Map Transition Logic----------------
--------------
+
+    --------------
+    ---3D Map Transition Logic----------------
+    -------------
     if mapTransitioning then
         mapTransitioningFrames = mapTransitioningFrames - 1
         if mapTransitioningFrames <= 0 then
@@ -475,17 +462,14 @@ re.on_frame(function()
     end
     -- Clear any leftover virtual mouse state
     clearLingeringVirtualMouse()
-
     -- only one map type should be open
     resolveConflictingMapStates()
-
     -- Handle any queued map close
     finalizeQueuedMapClose()
 
 -------------------------------------------------------------------------------
 --------------
 ------------State Management----------------
--------------------------Determine current state based on flags
 -------------
     local state = nil
 
@@ -499,7 +483,7 @@ re.on_frame(function()
         state = "startmenuOpen"
     elseif startSubMenu_Open then
         state = "startSubMenu_Open"
-    elseif gamePaused then
+    elseif gameIsPaused then
         state = "gamePaused"
     elseif itemBar_Open then
         state = "itemBar_Open"
@@ -518,45 +502,35 @@ re.on_frame(function()
 
     local actions = {
         inCamp = function()
-            -- UI should remain visible in camp
         end,
         localMap_Open = function()
-            -- UI should remain visible on map
         end,
         worldMap_Open = function()
-            -- UI should remain visible on world map
         end,
-        menuOpen = function()
-            -- UI should remain visible when menu is open
+        startMenu_Open = function()
         end,
         startSubMenu_Open = function()
-            -- UI should remain visible when start submenu is open
         end,
         gamePaused = function()
-            -- UI should remain visible when game is paused
         end,
         virtualMouseMenuOpen = function()
-            -- UI should remain visible when virtual mouse menu is open
         end,
         itemBar_Open = function()
-            -- UI should remain visible when item bar is open
         end,
         inTent = function()
-            -- UI should remain visible in tent
         end,
         VoiceChatMenu_Open = function()
-            -- UI should remain visible when voice chat menu is open
         end,
         startedDialogue = function()
-            -- UI should remain visible when dialogue is started
         end,
         hideUI = function()
             local gui_manager = sdk.get_managed_singleton("app.GUIManager")
             if not gui_manager then return end
             local method = sdk.find_type_definition("app.GUIManager"):get_method("allGUIForceInvisible")
             if method then
+                forceShowHUD = true -- Force show HUD if hiding
+                print("Hiding UI")
                 method:call(gui_manager)
-                
             end
         end
     }
@@ -654,3 +628,69 @@ end)
 
     
 -- end
+
+
+
+
+-------------------Functions we might want to hook
+---
+---  -- -- Game Pause (Specialty Guide UI)
+    --     { "app.GUIManager", "onOpenSpecialtyGuideUI", function() gamePaused = true; print("Game paused") end },
+    --     { "app.GUIManager", "setupEnergyGauge", function() gamePaused = false; print("Game resumed") end },
+
+--app.cGUICommonMenu_VoiceChat.get_OpenGUIID()
+--ace.GUIBase`2<app.GUIID.ID,app.GUIFunc.TYPE>.onDestroy()
+
+--ace.GUIBase`2<app.GUIID.ID,app.GUIFunc.TYPE>.toVisible()
+
+--app.cGUIMenuShutdownCtrl.isCutScenePlaying
+
+--app.GUI060102.onOpen()
+--app.cGUICommonMenu_ItemPouch.get_OpenGUIID
+
+--app.GUIManager.<updatePlCommandMask>b__285_0
+--app.GUIManager.getWishlistItemFlagTable
+
+
+
+--Bounty List from pause menu
+--app.GUI090800.onOpen()
+
+--Trigger menu sound
+--app.GUI030000.callOptinalSound_ExecuteDirect()
+--app.GUI040001.onTriggerSoundOpen(System.Boolean)
+--onOpen(app.GUIID.ID, via.gui.Control, System.Boolean, System.Int32)
+
+
+----When quit and save is selected
+--app.GUIManager.getNotifyWindowInfo
+
+--UI Mask when in options menu
+--app.GUIManager.<updatePlCommandMask>b__285_0
+
+--Opening a StartSubMenu
+--app.GUIManager.instantiatePrefab
+
+--------------------
+
+-------------------------------------------------------------
+
+---PauseManager Hook--
+
+-- sdk.hook(
+--     sdk.find_type_definition("app.PauseManager"):get_method("onAllRequestExecuted"),
+--     function(args) -- before call (optional)
+--         return sdk.PreHookResult.CALL
+--     end,
+--     function(retval) -- after call
+--         local pauseManager = sdk.get_managed_singleton("app.PauseManager")
+--         if pauseManager then
+--             local isPaused = pauseManager:call("get_IsPaused")
+--             gamePaused = isPaused
+--             print(isPaused and "Game paused " or "Game resumed")
+--         else
+--             print("Could not get PauseManager")
+--         end
+--         return retval
+--     end
+-- )
