@@ -476,7 +476,7 @@ if missionManager then
     if questDirector and questDirector:call("IsFinishing") then
         IsFinishingQuest = true
         forceShowHUD = true
-        print("Quest is finishing — restoring HUD")
+        print("Quest is finishing")
     end
 end
 
@@ -592,7 +592,7 @@ re.on_frame(function()
 
 
 
-    local actions = {
+    local playerGUIActions = {
         inCamp = function()
         end,
         inTent = function()
@@ -627,21 +627,21 @@ re.on_frame(function()
         hideUI = function()
             local gui_manager = sdk.get_managed_singleton("app.GUIManager")
             if not gui_manager then return end
-            local method = sdk.find_type_definition("app.GUIManager"):get_method("allGUIForceInvisible")
-            if method then
+            local set_HideUI = sdk.find_type_definition("app.GUIManager"):get_method("allGUIForceInvisible")
+            if set_HideUI then
                 if forceShowHUD then
                 print("Hiding UI")
                 end
                     forceShowHUD = false
-                    method:call(gui_manager)
+                    set_HideUI:call(gui_manager)
                 else
                     forceShowHUD = true
             end
         end
     }
-        -- Call the appropriate function based on the state
-        local action = actions[state]
-        if action then action() end
+        -- Call the appropriate function based on player actions
+        local runPlayerActions = playerGUIActions[state]
+        if runPlayerActions then runPlayerActions() end
 end)
 -----------------------------------
 --End frame update-----------------------------------
