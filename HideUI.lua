@@ -7,6 +7,10 @@ local startMenu_Open = false
 local startSubMenu_Open = false
 local startSubMenuTimer = 0
 local START_SUB_MENU_TIMEOUT = 60
+local equipList_Open = false
+local keyboardSettings_Open = false
+local photoMode_Open = false
+local photoModeTimer = 0
 local virtualMouseMenu_Open = false
 local inCamp = false
 local localMap_Open = false
@@ -187,33 +191,77 @@ local hook_definitions = {
     ---UI Mask-------------------------------------------------------
         { "app.GUIManager", "<updatePlCommandMask>b__285_0", function()
                 startSubMenu_Open = true
-                startSubMenuTimer = 10
+                startSubMenuTimer = 20
+                print(startSubMenuTimer)
 
         end },
 ----------------------------------------------------------------------------------------------------------
----
----
+--------
+    --- Radar mask ckeck------------------------
+        { "app.cGUIMapFlowOpenRadarMask", "enter", function()
+            photoMode_Open = false
+            print("RadarMask.enter ")
+            print( "PhotoMode Closed",photoMode_Open)
+        end },
+
     -- Pause Menu-----------------------------------------------------------
-        { "app.GUI030000", "onOpen", function() startSubMenu_Open = false; startMenu_Open = true; print("Opened pause menu") end },
+        { "app.GUI030000", "onOpen", function()
+            
+            startMenu_Open = true;
+            keyboardSettings_Open = false;
+            print("Opened pause menu")
+
+        end },
+    ---Pause Menu Close
         { "app.GUI030000", "onClose", function()
-            startMenu_Open = false
+            
             uiMask_Open = false
+            equipList_Open = false
+
             print("Closed pause menu")
             print("SubMenu Closed")
 
         end },
-        
-        --StartingSubMenus------
+----------------------------------------------------------------------------------
+
+    --Starting SubMenus------
         { "app.GUIManager", "instantiatePrefab", function()
             startSubMenu_Open = true
             startSubMenuTimer = START_SUB_MENU_TIMEOUT
             print("Start SubMenu Open — timer started")
             print("Start SubMenu Open")
-            
-        end },
-----------------------------------------------------------------------------------
----
 
+        end },
+
+    --Selecting submenu item?
+        { "app.GUI030000", "executeItem(app.user_data.StartMenuData.ItemBase)", function()
+            
+            print("Start SubMenu selected")
+
+        end },
+
+----------------------------------------------------------------------------------
+--------
+    --EquipList
+        { "app.GUI080001","onOpen",function()
+            equipList_Open = true
+            print("Opened EquipList menu")
+
+        end },
+        
+-------------------------------------------------------------
+---------------------
+    ---Photograph Mode---------------------------------------------------
+        { "app.mcPhotograph","updatePhotoModeGUIOpenCheck",function()
+            photoMode_Open = true
+            print("Photograph Mode Opened")
+        end },
+        
+    --Keyboard Settings---------------------------------------------------
+        { "app.GUI030000","executeItem(app.user_data.StartMenuData.ItemBase)",function()
+            keyboardSettings_Open = true
+            print("KeyboardSettings Opened")
+        end },
 
 
         ----Bounty List ----------------------------------------------------
@@ -310,6 +358,10 @@ local hook_definitions = {
 ----------------------------------------------------------------------------------
 ------------→→End Hook list←←-----------------------------------------------------------------------------------------→→End Hook list←←
 ---
+
+
+
+----
     -- VoiceChatMenu----------------------------------------------
         { "app.GUI040001", "guiDestroy", function() voiceChatMenu_Open = false; print("Voice chat list Closed") end },
 
@@ -447,7 +499,6 @@ re.on_frame(function()
     end
 
 
-
     --Wait until player is ready
         if not player_Ready then
             if getPlayer() ~= nil then
@@ -477,62 +528,69 @@ re.on_frame(function()
 
 
 
---------------
----3D Map Transition Logic----------------
--------------
-    if mapTransitioning then
-        mapTransitioningFrames = mapTransitioningFrames - 1
-        if mapTransitioningFrames <= 0 then
-            finishMapTransition()
-            print("Map transition complete — unblocking")
+
+    --------------
+    ---3D Map Transition Logic----------------
+    -------------
+        if mapTransitioning then
+            mapTransitioningFrames = mapTransitioningFrames - 1
+            if mapTransitioningFrames <= 0 then
+                finishMapTransition()
+                print("Map transition complete — unblocking")
+            end
         end
-    end
-    -- Clear any leftover virtual mouse state
-    clearLingeringVirtualMouse()
-    -- only one map type should be open
-    resolveConflictingMapStates()
-    -- Handle any queued map close
-    finalizeQueuedMapClose()
--------------------------------------------
---End 3D Map Transition Logic----------------
------------------------------------------------ 
--------------------------------------------------------------------------------
+        -- Clear any leftover virtual mouse state
+        clearLingeringVirtualMouse()
+        -- only one map type should be open
+        resolveConflictingMapStates()
+        -- Handle any queued map close
+        finalizeQueuedMapClose()
+    -------------------------------------------
+    --End 3D Map Transition Logic----------------
+    ----------------------------------------------- 
+    -------------------------------------------------------------------------------
 
 
 
 
---------------
-------------State Management----------------
--------------
-    local state = nil
+    --------------
+    ------------State Management----------------
+    -------------
+        local state = nil
 
-    if inCamp then
-        state = "inCamp"
-    elseif localMap_Open then
-        state = "mapOpen"
-    elseif worldMap_Open then
-        state = "worldMap_Open"
-    elseif startMenu_Open then
-        state = "startmenuOpen"
-    elseif startSubMenu_Open then
-        state = "startSubMenu_Open"
-    elseif uiMask_Open then
-        state = "uiMask_Open"
-    elseif bountyMenu_Open then
-        state = "bountyMenu_Open"
-    elseif gameIsPaused then
-        state = "gamePaused"
-    elseif itemBar_Open then
-        state = "itemBar_Open"
-    elseif inTent then
-        state = "inTent"    
-    elseif voiceChatMenu_Open then
-        state = "voiceChatMenu_Open"
-    elseif startedDialogue then
-        state = "startedDialogue"
-    else
-        state = "hideUI"
-    end
+        if inCamp then
+            state = "inCamp"
+        elseif localMap_Open then
+            state = "mapOpen"
+        elseif worldMap_Open then
+            state = "worldMap_Open"
+        elseif startMenu_Open then
+            state = "startmenuOpen"
+        elseif startSubMenu_Open then
+            state = "startSubMenu_Open"
+        elseif uiMask_Open then
+            state = "uiMask_Open"
+        elseif equipList_Open then
+            state = "equipList_Open"
+        elseif keyboardSettings_Open then
+            state = "keyboardSettings_Open"
+        elseif photoMode_Open then
+            state = "photoMode_Open"
+        elseif bountyMenu_Open then
+            state = "bountyMenu_Open"
+        elseif gameIsPaused then
+            state = "gamePaused"
+        elseif itemBar_Open then
+            state = "itemBar_Open"
+        elseif inTent then
+            state = "inTent"    
+        elseif voiceChatMenu_Open then
+            state = "voiceChatMenu_Open"
+        elseif startedDialogue then
+            state = "startedDialogue"
+        else
+            state = "hideUI"
+        end
 
 
 
@@ -540,27 +598,33 @@ re.on_frame(function()
     local actions = {
         inCamp = function()
         end,
+        inTent = function()
+        end,
         localMap_Open = function()
         end,
         worldMap_Open = function()
         end,
-        startMenu_Open = function()
+        gamePaused = function()
         end,
-        startSubMenu_Open = function()
+        startMenu_Open = function()
         end,
         uiMask_Open = function()
         end,
-        gamePaused = function()
-        end,
-        virtualMouseMenuOpen = function()
-        end,
         itemBar_Open = function()
         end,
-        inTent = function()
+        equipList_Open = function()
+        end,
+        photoMode_Open = function ()
+        end,
+        startedDialogue = function()
+        end,
+        startSubMenu_Open = function()
         end,
         VoiceChatMenu_Open = function()
         end,
-        startedDialogue = function()
+        virtualMouseMenuOpen = function()
+        end,
+        keyboardSettings_Open = function()
         end,
 
         hideUI = function()
