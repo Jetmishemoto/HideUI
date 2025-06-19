@@ -1,17 +1,18 @@
 
 local initialized = false
 local forceShowHUD = false
+local uiMask_Open = false
+local bountyMenu_Open = false
 local startMenu_Open = false
 local startSubMenu_Open = false
 local startSubMenuTimer = 0
 local START_SUB_MENU_TIMEOUT = 60
 local virtualMouseMenu_Open = false
-local campSoundPlayed = false
 local inCamp = false
 local localMap_Open = false
 local localMapCloseQueued = false
 local worldMap_Open = false
-local mapFromWorldMap = false -- Flag to track if we're transitioning from world map
+local localMapFromWorldMap = false -- Flag to track if we're transitioning from world map
 local gameIsPaused = false
 local player_Ready = false
 local itemBar_Open = false
@@ -20,7 +21,9 @@ local voiceChatMenu_Open = false
 local startedDialogue = false
 local mapTransitioning = false
 local mapTransitioningFrames = 0
-local IsFinishingQuest = false 
+local IsFinishingQuest = false
+
+local campSoundPlayed = false
 
 
 
@@ -58,13 +61,6 @@ end
 --     end
 -- end
 
-
-local guiTypes = {
-    "app.GUI020012", "app.GUI020018", "app.GUI020016",
-    "app.GUI060010", "app.GUI060011", "app.GUI020015",
-    "app.GUI020004", "app.GUI020003", "app.GUI020006",
-    "app.GUI020009"
-}
 --app.GUI030000Accessor
 ---Item bar PopUP
 --app.GUI020012
@@ -96,6 +92,13 @@ local guiTypes = {
 --Time of day bottomLeft
 --app.GUI020009
 
+local guiTypes = {
+    "app.GUI020012", "app.GUI020018", "app.GUI020016",
+    "app.GUI060010", "app.GUI060011", "app.GUI020015",
+    "app.GUI020004", "app.GUI020003", "app.GUI020006",
+    "app.GUI020009"
+}
+
 
 
 
@@ -121,28 +124,12 @@ local function hook_method(type_str, method_str, callback)
 end
 
 
-----------------Initialize hooks---------------
-----------------------------------------------------------------------------------
-for _, h in ipairs(hook_definitions) do
-    hook_method(h[1], h[2], function(args)
-        h[3]()
-    end)
-end
-----------------------
--------------------------------------------------------------------------------
--------------------------------------------------------------------------------
-
-
-
-
-
 -- Get player
 local function getPlayer()
     local playerManager = sdk.get_managed_singleton("app.PlayerManager")
     if not playerManager then return nil end
     return playerManager:call("getMasterPlayer")
 end
-
 --  check if communication menu is open
 local function isCommunicationOpen()
     local util = sdk.find_type_definition("app.CommunicationUtil")
@@ -183,23 +170,55 @@ end
 
 
 ---------
----------⌈→→Hook list←←⌉--------------
+---------⌈→→Hook list←←⌉------------------------------------------------------------------------------------⌈→→Hook list←←⌉--------
 ---------
 local hook_definitions = {
 
+    --Camp Area
+        {"app.GUIManager", "requestLifeArea", function()
+            inCamp = true
+            print("Entered camp")
+            print("HUD Active")
 
+        end },
+        { "app.GUIManager", "requestStage", function() inCamp = false; print("Left camp") end },
+----------------------------------------------------------------------------------------------------------
+
+    ---UI Mask-------------------------------------------------------
+        { "app.GUIManager", "<updatePlCommandMask>b__285_0", function()
+                startSubMenu_Open = true
+                startSubMenuTimer = 10
+
+        end },
+----------------------------------------------------------------------------------------------------------
+---
+---
     -- Pause Menu-----------------------------------------------------------
         { "app.GUI030000", "onOpen", function() startSubMenu_Open = false; startMenu_Open = true; print("Opened pause menu") end },
-        { "app.GUI030000", "onClose", function() startMenu_Open = false; print("Closed pause menu") end },
+        { "app.GUI030000", "onClose", function()
+            startMenu_Open = false
+            uiMask_Open = false
+            print("Closed pause menu")
+            print("SubMenu Closed")
 
+        end },
+        
+        --StartingSubMenus------
         { "app.GUIManager", "instantiatePrefab", function()
             startSubMenu_Open = true
             startSubMenuTimer = START_SUB_MENU_TIMEOUT
             print("Start SubMenu Open — timer started")
             print("Start SubMenu Open")
-
+            
         end },
 ----------------------------------------------------------------------------------
+---
+
+
+
+        ----Bounty List ----------------------------------------------------
+        { "app.GUI090800", "onOpen", function() bountyMenu_Open = false; print("Closed pause menu") end },
+-------------------------------------------------------------------------------
 ---
     -- Virtual Mouse Menus-----------------------------------------------
         { "app.GUIManager", "onSetVirtualMouse", function()
@@ -214,12 +233,7 @@ local hook_definitions = {
 ----------------------------------------------------------------------------------
 ----------------------------------------------------------------------------------------------
 
-    --Camp Area
-        {"app.GUIManager", "requestLifeArea", function()inCamp = true; print("Entered camp")end },
-        { "app.GUIManager", "requestStage", function() inCamp = false; print("Left camp") end },
 
-----------------------------------------------------------------------------------------------------------
----
 ------------------------
     -- LocalMap---------------------------------------------------------
         { "app.cGUIMapController", "requestOpen", function()
@@ -228,7 +242,7 @@ local hook_definitions = {
 
             localMap_Open = true
 
-            if mapFromWorldMap then
+            if localMapFromWorldMap then
                 print("Switching from World Map → Local Map")
                 -- stay in world map mode until confirmed transition is done
                 return
@@ -256,7 +270,7 @@ local hook_definitions = {
         { "app.GUI060102", "onOpen", function()
 
             worldMap_Open = true
-            mapFromWorldMap = true -- flag we're transitioning from world map
+            localMapFromWorldMap = true -- flag we're transitioning from world map
             mapTransitioning = true
             mapTransitioningFrames = 60
             startSubMenu_Open = false -- close start submenu if open
@@ -267,7 +281,7 @@ local hook_definitions = {
             if mapTransitioning then
                 print("World Map closed early — forcibly ending map transition")
                 mapTransitioning = false
-                mapFromWorldMap = false
+                localMapFromWorldMap = false
                 mapTransitioningFrames = 0
             end
             print("WorldMap Closed")
@@ -294,13 +308,29 @@ local hook_definitions = {
 
         end },
 ----------------------------------------------------------------------------------
+------------→→End Hook list←←-----------------------------------------------------------------------------------------→→End Hook list←←
 ---
     -- VoiceChatMenu----------------------------------------------
         { "app.GUI040001", "guiDestroy", function() voiceChatMenu_Open = false; print("Voice chat list Closed") end },
 
-    -- Npc Dialogue
+    -- Npc Dialogue----------------------------------------------
         -- { "app.DialogueManager", "startDialogue", function() startedDialogue = true; print("Player started dialogue") end },
 }
+
+
+
+----------------Initialize hooks---------------
+----------------------------------------------------------------------------------
+for _, h in ipairs(hook_definitions) do
+    hook_method(h[1], h[2], function(args)
+        h[3]()
+    end)
+end
+----------------------
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+
+
 
 
 -----PauseManager-----------------------------
@@ -329,7 +359,6 @@ end)
 
 -- VoiceChatMenu---------------------------------------------|
 
--- couldnt find a way to hook the menu open, so we use the controller method
 -- Voice Chat Menu (Keyboard)
 hook_method(
     "app.cGUICommonMenu_VoiceChat",
@@ -358,7 +387,7 @@ hook_method(
 --------------
 local function finishMapTransition()
     mapTransitioning = false
-    mapFromWorldMap = false
+    localMapFromWorldMap = false
     print("Map transition complete — unblocking")
 end
 
@@ -371,7 +400,7 @@ end
 
 local function resolveConflictingMapStates()
     if localMap_Open and worldMap_Open  then
-        print("[Warning] Both Local and World Map are marked open! Resetting...")
+        print("Both Local and World Map are marked open! Resetting...")
         -- World map transitioned to local map, so clear world map flag
         worldMap_Open = false
     end
@@ -417,6 +446,8 @@ re.on_frame(function()
         print("HideUI initialized",initialized)
     end
 
+
+
     --Wait until player is ready
         if not player_Ready then
             if getPlayer() ~= nil then
@@ -425,10 +456,6 @@ re.on_frame(function()
             end
             return -- Don't proceed with GUI logic yet
         end
-
-
-
-    
 
     -- if player_Ready then
     --     print("local mapOpen:", localMap_Open,
@@ -439,7 +466,7 @@ re.on_frame(function()
     -- end
 
 
-    
+
     if startSubMenu_Open then
         startSubMenuTimer = startSubMenuTimer - 1
         if startSubMenuTimer <= 0 then
@@ -450,9 +477,9 @@ re.on_frame(function()
 
 
 
-    --------------
-    ---3D Map Transition Logic----------------
-    -------------
+--------------
+---3D Map Transition Logic----------------
+-------------
     if mapTransitioning then
         mapTransitioningFrames = mapTransitioningFrames - 1
         if mapTransitioningFrames <= 0 then
@@ -466,8 +493,14 @@ re.on_frame(function()
     resolveConflictingMapStates()
     -- Handle any queued map close
     finalizeQueuedMapClose()
-
+-------------------------------------------
+--End 3D Map Transition Logic----------------
+----------------------------------------------- 
 -------------------------------------------------------------------------------
+
+
+
+
 --------------
 ------------State Management----------------
 -------------
@@ -483,6 +516,10 @@ re.on_frame(function()
         state = "startmenuOpen"
     elseif startSubMenu_Open then
         state = "startSubMenu_Open"
+    elseif uiMask_Open then
+        state = "uiMask_Open"
+    elseif bountyMenu_Open then
+        state = "bountyMenu_Open"
     elseif gameIsPaused then
         state = "gamePaused"
     elseif itemBar_Open then
@@ -511,6 +548,8 @@ re.on_frame(function()
         end,
         startSubMenu_Open = function()
         end,
+        uiMask_Open = function()
+        end,
         gamePaused = function()
         end,
         virtualMouseMenuOpen = function()
@@ -523,14 +562,19 @@ re.on_frame(function()
         end,
         startedDialogue = function()
         end,
+
         hideUI = function()
             local gui_manager = sdk.get_managed_singleton("app.GUIManager")
             if not gui_manager then return end
             local method = sdk.find_type_definition("app.GUIManager"):get_method("allGUIForceInvisible")
             if method then
-                forceShowHUD = true -- Force show HUD if hiding
+                if forceShowHUD then
                 print("Hiding UI")
-                method:call(gui_manager)
+                end
+                    forceShowHUD = false
+                    method:call(gui_manager)
+                else
+                    forceShowHUD = true
             end
         end
     }
@@ -539,7 +583,7 @@ re.on_frame(function()
         if action then action() end
 end)
 -----------------------------------
------------------------------------
+--End frame update-----------------------------------
 -----------------------------------
 
 --app.CommunicationUtil.isOpen
@@ -560,6 +604,46 @@ end)
 --app.GUIManager.requestLifeArea
 
 
+ -----app.GUIID.ID[]
+ ------↓
+-- Method: Set
+-- Method: Get
+-- Method: Address
+-- Method: GetEnumerator
+-- Method: Add
+-- Method: Clear
+-- Method: Contains
+-- Method: CopyTo
+-- Method: Remove
+-- Method: get_Item
+-- Method: set_Item
+-- Method: IndexOf
+-- Method: Insert
+-- Method: RemoveAt
+
+    -- local gm = sdk.get_managed_singleton("app.GUIManager")
+    -- if not gm then
+    --     return print("GUIManager not found")
+    -- end
+
+    -- local acc = gm:call("get_GUI600001Accessor","get_GUI030000Accessor")
+    -- if not acc then
+    --     return print("GUI600001Accessor not found")
+    -- end
+
+    -- local ids = acc:call("getNeedIDs")
+    -- if not ids then
+    --     return print("getNeedIDs() returned nil")
+    -- end
+
+    -- -- Try the proper List<T> method names
+    -- local count = ids:call("get_Count")
+    -- print("List Count:", count)
+
+    -- for i = 0, count - 1 do
+    --     local id = ids:call("get_Item", i)
+    --     print("Active GUI ID:", id)
+    -- end
 
 -- local function playMenuSound()
 
@@ -580,7 +664,7 @@ end)
 
 --     -- Access GUI030000 component
 --     local components = accessor:get_field("Components")
-    
+
 --             local accessor_type = accessor:get_type_definition()
 --         for i, field in ipairs(accessor_type:get_fields()) do
 --             print(string.format("Field %d: %s", i, field:get_name()))
@@ -638,6 +722,12 @@ end)
     --     { "app.GUIManager", "onOpenSpecialtyGuideUI", function() gamePaused = true; print("Game paused") end },
     --     { "app.GUIManager", "setupEnergyGauge", function() gamePaused = false; print("Game resumed") end },
 
+
+
+
+
+
+
 --app.cGUICommonMenu_VoiceChat.get_OpenGUIID()
 --ace.GUIBase`2<app.GUIID.ID,app.GUIFunc.TYPE>.onDestroy()
 
@@ -656,6 +746,11 @@ end)
 --Bounty List from pause menu
 --app.GUI090800.onOpen()
 
+
+
+
+
+
 --Trigger menu sound
 --app.GUI030000.callOptinalSound_ExecuteDirect()
 --app.GUI040001.onTriggerSoundOpen(System.Boolean)
@@ -668,7 +763,7 @@ end)
 --UI Mask when in options menu
 --app.GUIManager.<updatePlCommandMask>b__285_0
 
---Opening a StartSubMenu
+--Opening a StartSubMenu and other submenus
 --app.GUIManager.instantiatePrefab
 
 --------------------

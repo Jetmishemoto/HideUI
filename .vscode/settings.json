@@ -1,6 +1,7 @@
 {
     "Lua.diagnostics.globals": [
         "sdk",
-        "re"
+        "re",
+        "uiMask_Open"
     ]
 }
