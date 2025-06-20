@@ -29,7 +29,7 @@ local mapTransitioningFrames = 0
 local questHasStarted = false
 local IsFinishingQuest = false
 local questUI_Timer = 0
-local QUEST_UI_TIMEOUT = 1500
+local QUEST_UI_TIMEOUT = 180
 
 local campSoundPlayed = false
 
@@ -218,13 +218,12 @@ local hook_definitions = {
         end },
 ----------------------------------------------------------------------------------------------------------
 --------
-    ---- Radar mask ckeck------------------------
-    --     { "app.cGUIMapFlowOpenRadarMask", "enter", function()
-    --         photoMode_Open = false
-    --         gameIsPaused = false
-    --         print("RadarMask.enter ")
-    --         print( "PhotoMode Closed",photoMode_Open)
-    --     end },
+    -- Radar mask ckeck------------------------ This openes whenever the normal UI is up
+        { "app.cGUIMapFlowOpenRadarMask", "enter", function()
+            keyboardSettings_Open = false;
+            print("RadarMask.enter ")
+
+        end },
 
     -- Pause Menu-----------------------------------------------------------
         { "app.GUI030000", "onOpen", function()
@@ -603,7 +602,7 @@ re.on_frame(function()
         print("HideUI initialized",initialized)
     end
 
-    -- Initialize timers if not already done
+    -- Initialize timers 
     if not timers then
         timers = {}
     end
@@ -623,35 +622,26 @@ re.on_frame(function()
     end
 
 
-
-
-
-    -- -- Start SubMenu Timer--------------------
-    -- if startSubMenuTimer > 0 then
-    --     startSubMenuTimer = startSubMenuTimer - 1
-    --     if startSubMenuTimer <= 0 then
-    --         startSubMenu_Open = false
-    --         print("Start SubMenu timeout — hiding UI")
-    --     end
-    -- end
-
     -- Photo Mode Timer-----------------------
     if photoModeTimer > 0 then
         photoModeTimer = photoModeTimer - 1
         if photoModeTimer <= 0 then
             photoMode_Open = false
+            keyboardSettings_Open = false
             print("Photo Mode timeout — hiding UI")
         end
     end
-
+    
     -- Quest UI Timer------------------------
     if questUI_Timer > 0 then
         questUI_Timer = questUI_Timer - 1
+        print("QuestUI_Timer:", questUI_Timer)
         if questUI_Timer <= 0 then
             questHasStarted = false
-            print("Quest UI timeout — hiding UI")
-        end
-    end
+            keyboardSettings_Open = false
+                    print("Quest UI timeout — hiding UI")
+                end
+            end
 
 
     --------------
@@ -687,7 +677,7 @@ re.on_frame(function()
 
     -- Priority list (insert first = runs first)
     if inCamp then table.insert(activeStates, "inCamp") end
-    if localMap_Open then table.insert(activeStates, "mapOpen") end
+    if localMap_Open then table.insert(activeStates, "localMap_Open") end 
     if worldMap_Open then table.insert(activeStates, "worldMap_Open") end
     if startMenu_Open then table.insert(activeStates, "startMenu_Open") end
     if startSubMenu_Open then table.insert(activeStates, "startSubMenu_Open") end
@@ -700,28 +690,26 @@ re.on_frame(function()
     if gameIsPaused then table.insert(activeStates, "gamePaused") end
     if startedDialogue then table.insert(activeStates, "startedDialogue") end
     if questHasStarted then table.insert(activeStates, "questHasStarted") end
-    if questUI_Timer then table.insert(activeStates, "questUI_Timer") end
     if voiceChatMenu_Open then table.insert(activeStates, "voiceChatMenu_Open") end
     if keyboardSettings_Open then table.insert(activeStates, "keyboardSettings_Open") end
 
 
 local statePriority = {
     "questHasStarted",
-    "questUI_Timer",
-    "photoMode_Open",
-    "mapOpen",
-    "worldMap_Open",
-    "startMenu_Open",
     "startSubMenu_Open",
-    "equipList_Open",
-    "keyboardSettings_Open",
-    "bountyMenu_Open",
-    "gamePaused",
+    "startMenu_Open",
     "itemBar_Open",
+    "photoMode_Open",
+    "gamePaused",
+    "inCamp",
+    "equipList_Open",
+    "localMap_Open",
+    "worldMap_Open",
+    "bountyMenu_Open",
+    "keyboardSettings_Open",
     "inTent",
     "voiceChatMenu_Open",
     "startedDialogue",
-    "inCamp",
 }
 
 
@@ -789,6 +777,7 @@ end
 
         -- Call the appropriate function based on player actions
         local runPlayerActions = playerGUIActions[currentState]
+        print("Current UI State:", currentState)
         if runPlayerActions then runPlayerActions() end
 end)
 -----------------------------------
