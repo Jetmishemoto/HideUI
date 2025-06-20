@@ -11,7 +11,7 @@ local equipList_Open = false
 local keyboardSettings_Open = false
 local photoMode_Open = false
 local photoModeTimer = 0
-local PHOTO_MODE_TIMEOUT = 30 
+local PHOTO_MODE_TIMEOUT = 30
 local virtualMouseMenu_Open = false
 local inCamp = false
 local localMap_Open = false
@@ -23,18 +23,20 @@ local player_Ready = false
 local itemBar_Open = false
 local inTent = false
 local voiceChatMenu_Open = false
-local startedDialogue = false
 local mapTransitioning = false
 local mapTransitioningFrames = 0
 local questHasStarted = false
-local IsFinishingQuest = false
 local questUI_Timer = 0
 local QUEST_START_UI_TIMEOUT = 190
 local questFinishing = false
 
+local startedDialogue = false
+local lastDialogueState = nil
+
+
 local campSoundPlayed = false
 
-local lastIsActive = nil 
+local lastIsActive = nil
 
 local config = {
     version = "1.0.0",
@@ -400,17 +402,6 @@ local hook_definitions = {
         -- VoiceChatMenu----------------------------------------------
         { "app.GUI040001", "guiDestroy", function() voiceChatMenu_Open = false; print("Voice chat list Closed") end },
 
-
-
-        -- Npc Dialogue----------------------------------------------
-        -- { "app.DialogueManager", "startDialogue", function()
-        --     startedDialogue = true; 
-        --     print("Player started dialogue") 
-        -- end },
-
-
-
-
         -- Quest Start
         { "app.cQuestStart", "enter", function()
             questHasStarted = true
@@ -487,8 +478,7 @@ hook_method(
     function(args)
         voiceChatMenu_Open = true
         print("Voice chat menu executed")
-    end
-)
+    end)
 --
 -- Voice Chat Menu (Controller)
 --
@@ -498,8 +488,7 @@ hook_method(
     function(args)
         voiceChatMenu_Open = true
         print(" Voice chat list opened (controller)")
-    end
-)
+    end)
 --------------------------------------------
 ---
 
@@ -546,7 +535,13 @@ end
 --app.cQuestStart.enter()
     local Get_QuestDirector = sdk.find_type_definition("app.MissionManager"):get_method("get_QuestDirector()")
     local Get_IsPlayingQuest = sdk.find_type_definition("app.MissionManager"):get_method("get_IsPlayingQuest()")
+    local missionManager = sdk.get_managed_singleton("app.MissionManager")
     local Get_IsActiveQuest = sdk.find_type_definition("app.MissionManager"):get_method("get_IsActiveQuest()")
+
+
+local DialogueManager = sdk.get_managed_singleton("app.DialogueManager")
+local getIsActiveDialogue = sdk.find_type_definition("app.DialogueManager"):get_method("get_IsActiveDialogue()")
+
 
 
 
@@ -635,9 +630,9 @@ re.on_frame(function()
             end
 
 
-    --------------
-    ---3D Map Transition Logic----------------
-    -------------
+--------------
+---3D Map Transition Logic----------------
+-------------
         if mapTransitioning then
             mapTransitioningFrames = mapTransitioningFrames - 1
             if mapTransitioningFrames <= 0 then
@@ -651,21 +646,18 @@ re.on_frame(function()
         resolveConflictingMapStates()
         -- Handle any queued map close
         finalizeQueuedMapClose()
-    -------------------------------------------
-    --End 3D Map Transition Logic----------------
-    ----------------------------------------------- 
-    -------------------------------------------------------------------------------
-    ----
+-------------------------------------------
+--End 3D Map Transition Logic----------------
+----------------------------------------------- 
+------------------------------------------------------------------
 
 
     -- Check if the quest is completed after reward screen
-local missionManager = sdk.get_managed_singleton("app.MissionManager")
 if missionManager and Get_IsActiveQuest then
     local isActive = Get_IsActiveQuest:call(missionManager)
     if isActive ~= lastIsActive then
         lastIsActive = isActive
         print("MissionManager:IsActiveQuest changed :", isActive)
-
         if not isActive then
             startSubMenu_Open = false
             questFinishing = false
@@ -676,35 +668,45 @@ end
 
 
 
-    --------------
-    ------------State Management----------------
-    -------------
-    
+    -- Dialogue detection
+if DialogueManager and getIsActiveDialogue then
+    local isActive = getIsActiveDialogue:call(DialogueManager)
 
+    if isActive ~= lastDialogueState then
+        lastDialogueState = isActive
+        startedDialogue = isActive
+        print(isActive and "Player started dialogue" or "❌ Player ended dialogue")
+    end
+end
+
+--------------
+------------State Management----------------
+-------------
     local activeStates = {}
 
     -- Priority list (insert first = runs first)
     if inCamp then table.insert(activeStates, "inCamp") end
-    if localMap_Open then table.insert(activeStates, "localMap_Open") end 
-    if worldMap_Open then table.insert(activeStates, "worldMap_Open") end
-    if startMenu_Open then table.insert(activeStates, "startMenu_Open") end
-    if startSubMenu_Open then table.insert(activeStates, "startSubMenu_Open") end
-    if uiMask_Open then table.insert(activeStates, "uiMask_Open") end
-    if equipList_Open then table.insert(activeStates, "equipList_Open") end
-    if photoMode_Open then table.insert(activeStates, "photoMode_Open") end
-    if bountyMenu_Open then table.insert(activeStates, "bountyMenu_Open") end
     if inTent then table.insert(activeStates, "inTent") end
-    if itemBar_Open then table.insert(activeStates, "itemBar_Open") end
+    if uiMask_Open then table.insert(activeStates, "uiMask_Open") end
     if gameIsPaused then table.insert(activeStates, "gamePaused") end
+    if itemBar_Open then table.insert(activeStates, "itemBar_Open") end
+    if worldMap_Open then table.insert(activeStates, "worldMap_Open") end
+    if localMap_Open then table.insert(activeStates, "localMap_Open") end
+    if questFinishing then table.insert(activeStates, "questFinished") end
+    if startMenu_Open then table.insert(activeStates, "startMenu_Open") end
+    if photoMode_Open then table.insert(activeStates, "photoMode_Open") end
+    if equipList_Open then table.insert(activeStates, "equipList_Open") end
+    if bountyMenu_Open then table.insert(activeStates, "bountyMenu_Open") end
     if startedDialogue then table.insert(activeStates, "startedDialogue") end
     if questHasStarted then table.insert(activeStates, "questHasStarted") end
+    if startSubMenu_Open then table.insert(activeStates, "startSubMenu_Open") end
     if voiceChatMenu_Open then table.insert(activeStates, "voiceChatMenu_Open") end
     if keyboardSettings_Open then table.insert(activeStates, "keyboardSettings_Open") end
-    if questFinishing then table.insert(activeStates, "questFinished") end
 
 
 local statePriority = {
     "questHasStarted",
+    "startedDialogue",
     "startSubMenu_Open",
     "startMenu_Open",
     "itemBar_Open",
@@ -719,7 +721,6 @@ local statePriority = {
     "keyboardSettings_Open",
     "inTent",
     "voiceChatMenu_Open",
-    "startedDialogue",
 }
 
 
@@ -750,8 +751,6 @@ end
         end,
         gamePaused = function()
         end,
-        startMenu_Open = function()
-        end,
         uiMask_Open = function()
         end,
         questUI_Timer = function()
@@ -761,6 +760,8 @@ end
         itemBar_Open = function()
         end,
         equipList_Open = function()
+        end,
+        startMenu_Open = function()
         end,
         photoMode_Open = function ()
         end,
@@ -782,10 +783,9 @@ end
             if not gui_manager then return end
             local set_HideUI = sdk.find_type_definition("app.GUIManager"):get_method("allGUIForceInvisible")
             if set_HideUI then
-                    forceShowHUD = false
                     set_HideUI:call(gui_manager)
             end
-        end}
+        end }
 
         -- Call the appropriate function based on player actions
         local runPlayerActions = playerGUIActions[currentState]
