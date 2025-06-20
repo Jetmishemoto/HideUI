@@ -11,6 +11,7 @@ local equipList_Open = false
 local keyboardSettings_Open = false
 local photoMode_Open = false
 local photoModeTimer = 0
+local PHOTO_MODE_TIMEOUT = 30 
 local virtualMouseMenu_Open = false
 local inCamp = false
 local localMap_Open = false
@@ -25,7 +26,10 @@ local voiceChatMenu_Open = false
 local startedDialogue = false
 local mapTransitioning = false
 local mapTransitioningFrames = 0
+local questHasStarted = false
 local IsFinishingQuest = false
+local questUI_Timer = 0
+local QUEST_UI_TIMEOUT = 1500
 
 local campSoundPlayed = false
 
@@ -128,6 +132,8 @@ local function hook_method(type_str, method_str, callback)
 end
 
 
+
+
 -- Get player
 local function getPlayer()
     local playerManager = sdk.get_managed_singleton("app.PlayerManager")
@@ -192,21 +198,23 @@ local hook_definitions = {
         { "app.GUIManager", "<updatePlCommandMask>b__285_0", function()
                 startSubMenu_Open = true
                 startSubMenuTimer = 20
-                print(startSubMenuTimer)
+
+                --print(startSubMenuTimer)
 
         end },
 ----------------------------------------------------------------------------------------------------------
 --------
-    --- Radar mask ckeck------------------------
-        { "app.cGUIMapFlowOpenRadarMask", "enter", function()
-            photoMode_Open = false
-            print("RadarMask.enter ")
-            print( "PhotoMode Closed",photoMode_Open)
-        end },
+    ---- Radar mask ckeck------------------------
+    --     { "app.cGUIMapFlowOpenRadarMask", "enter", function()
+    --         photoMode_Open = false
+    --         gameIsPaused = false
+    --         print("RadarMask.enter ")
+    --         print( "PhotoMode Closed",photoMode_Open)
+    --     end },
 
     -- Pause Menu-----------------------------------------------------------
         { "app.GUI030000", "onOpen", function()
-            
+
             startMenu_Open = true;
             keyboardSettings_Open = false;
             print("Opened pause menu")
@@ -214,10 +222,9 @@ local hook_definitions = {
         end },
     ---Pause Menu Close
         { "app.GUI030000", "onClose", function()
-            
+            startMenu_Open =false
             uiMask_Open = false
             equipList_Open = false
-
             print("Closed pause menu")
             print("SubMenu Closed")
 
@@ -233,27 +240,30 @@ local hook_definitions = {
 
         end },
 
-    --Selecting submenu item?
-        { "app.GUI030000", "executeItem(app.user_data.StartMenuData.ItemBase)", function()
+    -- --Selecting submenu item?
+    --     { "app.GUI030000", "executeItem(app.user_data.StartMenuData.ItemBase)", function()
             
-            print("Start SubMenu selected")
+    --         print("Start SubMenu selected")
 
-        end },
+    --     end },
 
 ----------------------------------------------------------------------------------
 --------
     --EquipList
-        { "app.GUI080001","onOpen",function()
+        { "app.GUI080001","onOpen", function()
             equipList_Open = true
             print("Opened EquipList menu")
 
         end },
-        
+
+
+
 -------------------------------------------------------------
 ---------------------
     ---Photograph Mode---------------------------------------------------
         { "app.mcPhotograph","updatePhotoModeGUIOpenCheck",function()
             photoMode_Open = true
+            photoModeTimer = PHOTO_MODE_TIMEOUT
             print("Photograph Mode Opened")
         end },
         
@@ -273,7 +283,7 @@ local hook_definitions = {
             if not virtualMouseMenu_Open then
             -- Only set to true if it wasn't already open
             virtualMouseMenu_Open = true
-            print("Main virtual menu open", virtualMouseMenu_Open)
+            --print("Main virtual menu open", virtualMouseMenu_Open)
             end
 
         end },
@@ -362,11 +372,23 @@ local hook_definitions = {
         
         -- Npc Dialogue----------------------------------------------
         -- { "app.DialogueManager", "startDialogue", function() startedDialogue = true; print("Player started dialogue") end },
+
+
+        -- Quest Start
+        { "app.cQuestStart", "enter", function()
+            questHasStarted = true
+            questUI_Timer = QUEST_UI_TIMEOUT  -- set to, e.g., 90 for 1.5s
+            startSubMenu_Open = false
+            virtualMouseMenu_Open = false
+            print("Quest Started Showing UI")
+        end },
+        { "app.GUI020202", "onOpen", function() questHasStarted = false; print("Quest Ended") end },
     }
 
     ----------------------------------------------------------------------------------
     ------------→→End Hook list←←-----------------------------------------------------------------------------------------→→End Hook list←←
     ---
+
 
 ----------------Initialize hooks---------------
 ----------------------------------------------------------------------------------
@@ -383,10 +405,15 @@ end
 
 
 -----PauseManager-----------------------------
-hook_method("app.PauseManager", "onAllRequestExecuted", function(retval)
+hook_method("app.PauseManager", "onAllRequestExecuted",
+    function(retval)
 
     if inTent then
         print("Don't change pause state if in tent")
+        return
+    end
+    if questHasStarted then
+        print("Don't change pause state if quest has started")
         return
     end
 
@@ -395,6 +422,7 @@ hook_method("app.PauseManager", "onAllRequestExecuted", function(retval)
         local isPaused = pauseManager:call("get_IsPaused")
         gameIsPaused = isPaused
         print(isPaused and "PauseManager.Game paused" or "PauseManager.Game resumed")
+        print("PauseManager.IsPaused:", isPaused)
     else
         print("Could not get PauseManager")
     end
@@ -443,7 +471,7 @@ end
 local function clearLingeringVirtualMouse()
     if not mapTransitioning and virtualMouseMenu_Open and not localMap_Open and not worldMap_Open then
         virtualMouseMenu_Open = false
-        print("Cleared lingering virtualMouseMenu_Open flag")
+        ---print("Cleared lingering virtualMouseMenu_Open flag")
     end
 end
 
@@ -463,23 +491,79 @@ local function finalizeQueuedMapClose()
         print("Closing map after transition delay (queued)")
     end
 end
----------------------------------------------
 
 
 
+--------------------------
+-------------------------
+    --Detect end-of-quest----------------------------------------------
+---------------------
+--------------------
+--app.cQuestStart.enter()
+    local Get_QuestDirector = sdk.find_type_definition("app.MissionManager"):get_method("get_QuestDirector()")
+    local Get_IsPlayingQuest = sdk.find_type_definition("app.MissionManager"):get_method("get_IsPlayingQuest()")
+    local Get_IsActiveQuest = sdk.find_type_definition("app.MissionManager"):get_method("get_IsActiveQuest()")
 
 
-    --Detect end-of-quest
-local missionManager = sdk.get_managed_singleton("app.MissionManager")
-if missionManager then
-    local questDirector = missionManager:call("get_QuestDirector")
-    if questDirector and questDirector:call("IsFinishing") then
-        IsFinishingQuest = true
-        forceShowHUD = true
-        print("Quest is finishing")
-    end
+-- --- returns true if any enemy still alive
+-- function IsPlaying()
+--     local mgr = sdk.find_type_definition("GetMissionManager")
+--     if mgr == nil then
+--         return false
+--     end
+
+--     -- mgr:get_IsActiveQuest() -- Quest end time still true
+--     -- mgr:getAcceptQuestTargetBrowsers() ~= nil and browsers:get_Count() > 0 -- same
+--     return Get_IsPlayingQuest:call(mgr)
+-- end
+
+-- --- returns true if in quest, even if all enemies died.
+-- function IsActive()
+--     local mgr = sdk.find_type_definition("GetMissionManager")
+--     if mgr == nil then
+--         return false
+--     end
+--     return Get_IsActiveQuest:call(mgr)
+-- end
+
+-- --- returns true if quest is finished (last 60s)
+-- function IsFinishing()
+--     local mgr = sdk.find_type_definition("GetMissionManager")
+--     if mgr == nil then
+--         -- log.info("BattleMusicManager is nil, skipped")
+--         return false
+--     end
+--     print("IsFinishingQuest is true")
+--     return IsActive() and not IsPlaying()
+-- end
+local function printAllUIStates()
+    print("===== UI STATE DUMP =====")
+    print("uiMask_Open:             ", uiMask_Open)
+    print("bountyMenu_Open:         ", bountyMenu_Open)
+    print("startMenu_Open:          ", startMenu_Open)
+    print("startSubMenu_Open:       ", startSubMenu_Open)
+    print("startSubMenuTimer:       ", startSubMenuTimer)
+    print("equipList_Open:          ", equipList_Open)
+    print("keyboardSettings_Open:   ", keyboardSettings_Open)
+    print("photoMode_Open:          ", photoMode_Open)
+    print("photoModeTimer:          ", photoModeTimer)
+    print("virtualMouseMenu_Open:   ", virtualMouseMenu_Open)
+    print("inCamp:                  ", inCamp)
+    print("localMap_Open:           ", localMap_Open)
+    print("localMapCloseQueued:     ", localMapCloseQueued)
+    print("worldMap_Open:           ", worldMap_Open)
+    print("localMapFromWorldMap:    ", localMapFromWorldMap)
+    print("gameIsPaused:            ", gameIsPaused)
+    print("player_Ready:            ", player_Ready)
+    print("itemBar_Open:            ", itemBar_Open)
+    print("inTent:                  ", inTent)
+    print("voiceChatMenu_Open:      ", voiceChatMenu_Open)
+    print("startedDialogue:         ", startedDialogue)
+    print("mapTransitioning:        ", mapTransitioning)
+    print("mapTransitioningFrames:  ", mapTransitioningFrames)
+    print("questHasStarted:         ", questHasStarted)
+    print("==========================")
 end
-
 
 
 
@@ -496,34 +580,48 @@ re.on_frame(function()
     end
 
 
-    --Wait until player is ready
-        if not player_Ready then
-            if getPlayer() ~= nil then
-                player_Ready = true
-                print("Player is ready")
-            end
-            return -- Don't proceed with GUI logic yet
+--Wait until player is ready
+    if not player_Ready then
+        if getPlayer() ~= nil then
+            player_Ready = true
+            print("Player is ready")
         end
+        return -- Don't proceed with GUI logic yet
+    end
 
-    -- if player_Ready then
-    --     print("local mapOpen:", localMap_Open,
-    --         " | worldMap_Open:", worldMap_Open,
-    --         " | mapFromWorldMap:", mapFromWorldMap,
-    --         " | mapTransitioning:", mapTransitioning,
-    --         " | mapTransitioningFrames:", mapTransitioningFrames)
-    -- end
-
-
-
-    if startSubMenu_Open then
-        startSubMenuTimer = startSubMenuTimer - 1
-        if startSubMenuTimer <= 0 then
-            startSubMenu_Open = false
-            print("Start SubMenu auto-closed (timer expired)")
-        end
+    if player_Ready then
+    printAllUIStates()
     end
 
 
+
+
+    -- Start SubMenu Timer
+    if startSubMenuTimer > 0 then
+        startSubMenuTimer = startSubMenuTimer - 1
+        if startSubMenuTimer <= 0 then
+            startSubMenu_Open = false
+            print("Start SubMenu timeout — hiding UI")
+        end
+    end
+
+    -- Photo Mode Timer
+    if photoModeTimer > 0 then
+        photoModeTimer = photoModeTimer - 1
+        if photoModeTimer <= 0 then
+            photoMode_Open = false
+            print("Photo Mode timeout — hiding UI")
+        end
+    end
+
+    -- Quest UI Timer
+    if questUI_Timer > 0 then
+        questUI_Timer = questUI_Timer - 1
+        if questUI_Timer <= 0 then
+            questHasStarted = false
+            print("Quest UI timeout — hiding UI")
+        end
+    end
 
 
     --------------
@@ -553,43 +651,100 @@ re.on_frame(function()
     --------------
     ------------State Management----------------
     -------------
-        local state = nil
+    --- -- local state = nil
 
-        if inCamp then
-            state = "inCamp"
-        elseif localMap_Open then
-            state = "mapOpen"
-        elseif worldMap_Open then
-            state = "worldMap_Open"
-        elseif startMenu_Open then
-            state = "startmenuOpen"
-        elseif startSubMenu_Open then
-            state = "startSubMenu_Open"
-        elseif uiMask_Open then
-            state = "uiMask_Open"
-        elseif equipList_Open then
-            state = "equipList_Open"
-        elseif keyboardSettings_Open then
-            state = "keyboardSettings_Open"
-        elseif photoMode_Open then
-            state = "photoMode_Open"
-        elseif bountyMenu_Open then
-            state = "bountyMenu_Open"
-        elseif gameIsPaused then
-            state = "gamePaused"
-        elseif itemBar_Open then
-            state = "itemBar_Open"
-        elseif inTent then
-            state = "inTent"    
-        elseif voiceChatMenu_Open then
-            state = "voiceChatMenu_Open"
-        elseif startedDialogue then
-            state = "startedDialogue"
-        else
-            state = "hideUI"
+        -- if inCamp then
+        --     state = "inCamp"
+        -- elseif localMap_Open then
+        --     state = "mapOpen"
+        -- elseif worldMap_Open then
+        --     state = "worldMap_Open"
+        -- elseif startMenu_Open then
+        --     state = "startmenuOpen"
+        -- elseif startSubMenu_Open then
+        --     state = "startSubMenu_Open"
+        -- elseif uiMask_Open then
+        --     state = "uiMask_Open"
+        -- elseif equipList_Open then
+        --     state = "equipList_Open"
+        -- elseif keyboardSettings_Open then
+        --     state = "keyboardSettings_Open"
+        -- elseif photoMode_Open then
+        --     state = "photoMode_Open"
+        -- elseif bountyMenu_Open then
+        --     state = "bountyMenu_Open"
+        -- elseif gameIsPaused then
+        --     state = "gamePaused"
+        -- elseif itemBar_Open then
+        --     state = "itemBar_Open"
+        -- elseif inTent then
+        --     state = "inTent"    
+        -- elseif voiceChatMenu_Open then
+        --     state = "voiceChatMenu_Open"
+        -- elseif startedDialogue then
+        --     state = "startedDialogue"
+        -- elseif questHasStarted then
+        --     state = "questHasStarted"
+        -- else
+        --     state = "hideUI"
+        -- end
+
+    local activeStates = {}
+
+    -- Priority list (insert first = runs first)
+    if inCamp then table.insert(activeStates, "inCamp") end
+    if localMap_Open then table.insert(activeStates, "mapOpen") end
+    if worldMap_Open then table.insert(activeStates, "worldMap_Open") end
+    if startMenu_Open then table.insert(activeStates, "startMenu_Open") end
+    if startSubMenu_Open then table.insert(activeStates, "startSubMenu_Open") end
+    if uiMask_Open then table.insert(activeStates, "uiMask_Open") end
+    if equipList_Open then table.insert(activeStates, "equipList_Open") end
+    if photoMode_Open then table.insert(activeStates, "photoMode_Open") end
+    if bountyMenu_Open then table.insert(activeStates, "bountyMenu_Open") end
+    if inTent then table.insert(activeStates, "inTent") end
+    if itemBar_Open then table.insert(activeStates, "itemBar_Open") end
+    if gameIsPaused then table.insert(activeStates, "gamePaused") end
+    if startedDialogue then table.insert(activeStates, "startedDialogue") end
+    if questHasStarted then table.insert(activeStates, "questHasStarted") end
+    if questUI_Timer then table.insert(activeStates, "questUI_Timer") end
+    if voiceChatMenu_Open then table.insert(activeStates, "voiceChatMenu_Open") end
+    if keyboardSettings_Open then table.insert(activeStates, "keyboardSettings_Open") end
+
+
+local statePriority = {
+    "questHasStarted",
+    "questUI_Timer",
+    "photoMode_Open",
+    "mapOpen",
+    "worldMap_Open",
+    "startMenu_Open",
+    "startSubMenu_Open",
+    "equipList_Open",
+    "keyboardSettings_Open",
+    "bountyMenu_Open",
+    "gamePaused",
+    "itemBar_Open",
+    "inTent",
+    "voiceChatMenu_Open",
+    "startedDialogue",
+    "inCamp",
+}
+
+
+-- Set default state
+local currentState = "hideUI"
+
+
+-- Find the highest priority state that’s active
+for _, priority in ipairs(statePriority) do
+    for _, state in ipairs(activeStates) do
+        if state == priority then
+            currentState = priority
+            break
         end
-
-
+    end
+    if currentState ~= "hideUI" then break end
+end
 
 
     local playerGUIActions = {
@@ -606,6 +761,10 @@ re.on_frame(function()
         startMenu_Open = function()
         end,
         uiMask_Open = function()
+        end,
+        questHasStarted = function ()
+        end,
+        questUI_Timer = function()
         end,
         itemBar_Open = function()
         end,
@@ -629,18 +788,13 @@ re.on_frame(function()
             if not gui_manager then return end
             local set_HideUI = sdk.find_type_definition("app.GUIManager"):get_method("allGUIForceInvisible")
             if set_HideUI then
-                if forceShowHUD then
-                print("Hiding UI")
-                end
                     forceShowHUD = false
                     set_HideUI:call(gui_manager)
-                else
-                    forceShowHUD = true
             end
-        end
-    }
+        end}
+
         -- Call the appropriate function based on player actions
-        local runPlayerActions = playerGUIActions[state]
+        local runPlayerActions = playerGUIActions[currentState]
         if runPlayerActions then runPlayerActions() end
 end)
 -----------------------------------
