@@ -29,8 +29,8 @@ local mapTransitioningFrames = 0
 local questHasStarted = false
 local IsFinishingQuest = false
 local questUI_Timer = 0
-local QUEST_UI_TIMEOUT = 180
-local questFinished = false
+local QUEST_START_UI_TIMEOUT = 190
+local questFinishing = false
 
 local campSoundPlayed = false
 
@@ -208,7 +208,12 @@ local hook_definitions = {
             print("HUD Active")
 
         end },
-        { "app.GUIManager", "requestStage", function() inCamp = false; print("Left camp") end },
+        --Laving Camp Area
+        { "app.GUIManager", "requestStage", function()
+            inCamp = false
+            print("Left camp")
+            print("HUD Inactive")
+            end },
 ----------------------------------------------------------------------------------------------------------
 
     ---UI Mask-------------------------------------------------------
@@ -253,7 +258,7 @@ local hook_definitions = {
             start_timer(startSubMenuTimer,START_SUB_MENU_TIMEOUT, function()
                 startSubMenu_Open = false
                 startSubMenuTimer = 0
-                questFinished = false
+                questFinishing = false
                 print("SubMenuTimer:", startSubMenuTimer)
                 print("Start SubMenu Closed — timer ended")
             end)
@@ -294,7 +299,7 @@ local hook_definitions = {
             photoModeTimer = PHOTO_MODE_TIMEOUT
             print("Photograph Mode Opened")
         end },
-        
+
     --Keyboard Settings---------------------------------------------------
         { "app.GUI030000","executeItem(app.user_data.StartMenuData.ItemBase)",function()
             keyboardSettings_Open = true
@@ -379,34 +384,37 @@ local hook_definitions = {
         { "app.GUI020008PartsPallet", "close", function() itemBar_Open = false; print("Item bar closed") end },
 ----------------------------------------------------------------------------------
 ---
-    -- Tent-------------------------------------------------------
+    -- Entering Tent-------------------------------------------------------
         { "app.GUIManager", "startTentMenu", function()
-
             inTent = true
             print("In Tent")
-
         end },
-        { "app.cGUISystemModuleOpenTentMenu", "exitTent(app.FacilityMenu.TYPE)",
-            function()
 
+        --Exiting Tent
+        { "app.cGUISystemModuleOpenTentMenu", "exitTent(app.FacilityMenu.TYPE)",function()
                 inTent = false
                 print("Exiting Tent")
-                
-
         end },
 
         ----
         -- VoiceChatMenu----------------------------------------------
         { "app.GUI040001", "guiDestroy", function() voiceChatMenu_Open = false; print("Voice chat list Closed") end },
-        
+
+
+
         -- Npc Dialogue----------------------------------------------
-        -- { "app.DialogueManager", "startDialogue", function() startedDialogue = true; print("Player started dialogue") end },
+        -- { "app.DialogueManager", "startDialogue", function()
+        --     startedDialogue = true; 
+        --     print("Player started dialogue") 
+        -- end },
+
+
 
 
         -- Quest Start
         { "app.cQuestStart", "enter", function()
             questHasStarted = true
-            questUI_Timer = QUEST_UI_TIMEOUT  -- set to, e.g., 90 for 1.5s
+            questUI_Timer = QUEST_START_UI_TIMEOUT  -- set to, e.g., 90 for 1.5s
             startSubMenu_Open = false
             virtualMouseMenu_Open = false
             print("Quest Started Showing UI")
@@ -415,7 +423,7 @@ local hook_definitions = {
         -- Quest End
         { "app.GUI020202", "onOpen", function()
             questHasStarted = false
-            questFinished = true
+            questFinishing = true
             print("Quest Ended")
 
         end },
@@ -615,7 +623,7 @@ re.on_frame(function()
         end
     end
     
-    -- Quest UI Timer------------------------
+    -- Start Quest UI Timer------------------------
     if questUI_Timer > 0 then
         questUI_Timer = questUI_Timer - 1
         print("QuestUI_Timer:", questUI_Timer)
@@ -649,6 +657,8 @@ re.on_frame(function()
     -------------------------------------------------------------------------------
     ----
 
+
+    -- Check if the quest is completed after reward screen
 local missionManager = sdk.get_managed_singleton("app.MissionManager")
 if missionManager and Get_IsActiveQuest then
     local isActive = Get_IsActiveQuest:call(missionManager)
@@ -658,6 +668,7 @@ if missionManager and Get_IsActiveQuest then
 
         if not isActive then
             startSubMenu_Open = false
+            questFinishing = false
             print("Quest ended or loading screen started — closing startSubMenu")
         end
     end
@@ -689,7 +700,7 @@ end
     if questHasStarted then table.insert(activeStates, "questHasStarted") end
     if voiceChatMenu_Open then table.insert(activeStates, "voiceChatMenu_Open") end
     if keyboardSettings_Open then table.insert(activeStates, "keyboardSettings_Open") end
-    if questFinished then table.insert(activeStates, "questFinished") end
+    if questFinishing then table.insert(activeStates, "questFinished") end
 
 
 local statePriority = {
@@ -743,8 +754,6 @@ end
         end,
         uiMask_Open = function()
         end,
-        questHasStarted = function ()
-        end,
         questUI_Timer = function()
         end,
         questFinished = function()
@@ -756,6 +765,8 @@ end
         photoMode_Open = function ()
         end,
         startedDialogue = function()
+        end,
+        questHasStarted = function ()
         end,
         startSubMenu_Open = function()
         end,
