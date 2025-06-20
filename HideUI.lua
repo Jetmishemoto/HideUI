@@ -222,6 +222,7 @@ local hook_definitions = {
     -- Radar mask ckeck------------------------ This openes whenever the normal UI is up
         { "app.cGUIMapFlowOpenRadarMask", "enter", function()
             keyboardSettings_Open = false;
+            startMenu_Open = false;
             print("RadarMask.enter ")
 
         end },
@@ -230,6 +231,7 @@ local hook_definitions = {
         { "app.GUI030000", "onOpen", function()
 
             startMenu_Open = true;
+            startSubMenu_Open = false;
             keyboardSettings_Open = false;
             print("Opened pause menu")
 
@@ -252,6 +254,7 @@ local hook_definitions = {
                 startSubMenu_Open = false
                 startSubMenuTimer = 0
                 questFinished = false
+                print("SubMenuTimer:", startSubMenuTimer)
                 print("Start SubMenu Closed — timer ended")
             end)
             --startSubMenuTimer = START_SUB_MENU_TIMEOUT
@@ -356,7 +359,7 @@ local hook_definitions = {
             localMapFromWorldMap = true -- flag we're transitioning from world map
             mapTransitioning = true
             mapTransitioningFrames = 60
-            startSubMenu_Open = false -- close start submenu if open
+            startSubMenu_Open = false 
             print("World Map Opened")
         end},
         { "app.GUIManager", "isOpenReadyGUI060102", function()
