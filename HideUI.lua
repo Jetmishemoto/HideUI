@@ -598,7 +598,7 @@ re.on_frame(function()
     --printAllUIStates()
     end
 
---Wait until player is ready----------------
+    --Wait until player is ready----------------
     if not player_Ready then
         if getPlayer() ~= nil then
             player_Ready = true
@@ -630,9 +630,9 @@ re.on_frame(function()
             end
 
 
---------------
----3D Map Transition Logic----------------
--------------
+    --------------
+    ---3D Map Transition Logic----------------
+    -------------
         if mapTransitioning then
             mapTransitioningFrames = mapTransitioningFrames - 1
             if mapTransitioningFrames <= 0 then
@@ -646,38 +646,38 @@ re.on_frame(function()
         resolveConflictingMapStates()
         -- Handle any queued map close
         finalizeQueuedMapClose()
--------------------------------------------
---End 3D Map Transition Logic----------------
------------------------------------------------ 
-------------------------------------------------------------------
+    -------------------------------------------
+    --End 3D Map Transition Logic----------------
+    ----------------------------------------------- 
+    ------------------------------------------------------------------
 
 
     -- Check if the quest is completed after reward screen
-if missionManager and Get_IsActiveQuest then
-    local isActive = Get_IsActiveQuest:call(missionManager)
-    if isActive ~= lastIsActive then
-        lastIsActive = isActive
-        print("MissionManager:IsActiveQuest changed :", isActive)
-        if not isActive then
-            startSubMenu_Open = false
-            questFinishing = false
-            print("Quest ended or loading screen started — closing startSubMenu")
+        if missionManager and Get_IsActiveQuest then
+            local isActive = Get_IsActiveQuest:call(missionManager)
+            if isActive ~= lastIsActive then
+                lastIsActive = isActive
+                print("MissionManager:IsActiveQuest changed :", isActive)
+                if not isActive then
+                    startSubMenu_Open = false
+                    questFinishing = false
+                    print("Quest ended or loading screen started — closing startSubMenu")
+                end
+            end
         end
-    end
-end
 
 
 
     -- Dialogue detection
-if DialogueManager and getIsActiveDialogue then
-    local isActive = getIsActiveDialogue:call(DialogueManager)
+        if DialogueManager and getIsActiveDialogue then
+            local isActive = getIsActiveDialogue:call(DialogueManager)
 
-    if isActive ~= lastDialogueState then
-        lastDialogueState = isActive
-        startedDialogue = isActive
-        print(isActive and "Player started dialogue" or "❌ Player ended dialogue")
-    end
-end
+            if isActive ~= lastDialogueState then
+                lastDialogueState = isActive
+                startedDialogue = isActive
+                print(isActive and "Player started dialogue" or "❌ Player ended dialogue")
+            end
+        end
 
 --------------
 ------------State Management----------------
@@ -704,40 +704,40 @@ end
     if keyboardSettings_Open then table.insert(activeStates, "keyboardSettings_Open") end
 
 
-local statePriority = {
-    "questHasStarted",
-    "startedDialogue",
-    "startSubMenu_Open",
-    "startMenu_Open",
-    "itemBar_Open",
-    "photoMode_Open",
-    "questFinished",
-    "gamePaused",
-    "inCamp",
-    "equipList_Open",
-    "localMap_Open",
-    "worldMap_Open",
-    "bountyMenu_Open",
-    "keyboardSettings_Open",
-    "inTent",
-    "voiceChatMenu_Open",
-}
+    local statePriority = {
+        "questHasStarted",
+        "startedDialogue",
+        "startSubMenu_Open",
+        "startMenu_Open",
+        "itemBar_Open",
+        "photoMode_Open",
+        "questFinished",
+        "gamePaused",
+        "inCamp",
+        "equipList_Open",
+        "localMap_Open",
+        "worldMap_Open",
+        "bountyMenu_Open",
+        "keyboardSettings_Open",
+        "inTent",
+        "voiceChatMenu_Open",
+    }
 
 
--- Set default state
-local currentState = "hideUI"
+    -- Set default state
+        local currentState = "hideUI"
 
 
--- Find the highest priority state that’s active
-for _, priority in ipairs(statePriority) do
-    for _, state in ipairs(activeStates) do
-        if state == priority then
-            currentState = priority
-            break
+    -- Find the highest priority state that’s active
+        for _, priority in ipairs(statePriority) do
+            for _, state in ipairs(activeStates) do
+                if state == priority then
+                    currentState = priority
+                    break
+                end
+            end
+            if currentState ~= "hideUI" then break end
         end
-    end
-    if currentState ~= "hideUI" then break end
-end
 
 
     local playerGUIActions = {
@@ -791,7 +791,7 @@ end
         local runPlayerActions = playerGUIActions[currentState]
         print("Current UI State:", currentState)
         if runPlayerActions then runPlayerActions() end
-end)
+    end)
 -----------------------------------
 --End frame update-----------------------------------
 -----------------------------------
