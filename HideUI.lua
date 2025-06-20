@@ -100,13 +100,6 @@ end
 --Time of day bottomLeft
 --app.GUI020009
 
-local guiTypes = {
-    "app.GUI020012", "app.GUI020018", "app.GUI020016",
-    "app.GUI060010", "app.GUI060011", "app.GUI020015",
-    "app.GUI020004", "app.GUI020003", "app.GUI020006",
-    "app.GUI020009"
-}
-
 
 
 
@@ -131,7 +124,30 @@ local function hook_method(type_str, method_str, callback)
     sdk.hook(method, callback)
 end
 
+-- Table to hold all your timers
+local timers = {}
 
+-- Call this every frame
+local function update_timers()
+    for name, timer in pairs(timers) do
+        if timer.value > 0 then
+            timer.value = timer.value - 1
+            if timer.value <= 0 then
+                timer.on_complete()
+                timers[name] = nil -- remove finished timer
+            end
+        end
+    end
+end
+
+-- Use this to start a new timer
+-- name: string (unique id), duration: int (frames), callback: function
+local function start_timer(name, duration, callback)
+    timers[name] = {
+        value = duration,
+        on_complete = callback
+    }
+end
 
 
 -- Get player
@@ -198,9 +214,7 @@ local hook_definitions = {
         { "app.GUIManager", "<updatePlCommandMask>b__285_0", function()
                 startSubMenu_Open = true
                 startSubMenuTimer = 20
-
                 --print(startSubMenuTimer)
-
         end },
 ----------------------------------------------------------------------------------------------------------
 --------
@@ -234,7 +248,12 @@ local hook_definitions = {
     --Starting SubMenus------
         { "app.GUIManager", "instantiatePrefab", function()
             startSubMenu_Open = true
-            startSubMenuTimer = START_SUB_MENU_TIMEOUT
+            start_timer(startSubMenuTimer,START_SUB_MENU_TIMEOUT, function()
+                startSubMenu_Open = false
+                startSubMenuTimer = 0
+                print("Start SubMenu Closed — timer ended")
+            end)
+            --startSubMenuTimer = START_SUB_MENU_TIMEOUT
             print("Start SubMenu Open — timer started")
             print("Start SubMenu Open")
 
@@ -536,6 +555,11 @@ end
 --     print("IsFinishingQuest is true")
 --     return IsActive() and not IsPlaying()
 -- end
+
+
+
+
+
 local function printAllUIStates()
     print("===== UI STATE DUMP =====")
     print("uiMask_Open:             ", uiMask_Open)
@@ -579,8 +603,17 @@ re.on_frame(function()
         print("HideUI initialized",initialized)
     end
 
+    -- Initialize timers if not already done
+    if not timers then
+        timers = {}
+    end
+    update_timers()
 
---Wait until player is ready
+    if player_Ready then
+    --printAllUIStates()
+    end
+
+--Wait until player is ready----------------
     if not player_Ready then
         if getPlayer() ~= nil then
             player_Ready = true
@@ -589,23 +622,20 @@ re.on_frame(function()
         return -- Don't proceed with GUI logic yet
     end
 
-    if player_Ready then
-    printAllUIStates()
-    end
 
 
 
 
-    -- Start SubMenu Timer
-    if startSubMenuTimer > 0 then
-        startSubMenuTimer = startSubMenuTimer - 1
-        if startSubMenuTimer <= 0 then
-            startSubMenu_Open = false
-            print("Start SubMenu timeout — hiding UI")
-        end
-    end
+    -- -- Start SubMenu Timer--------------------
+    -- if startSubMenuTimer > 0 then
+    --     startSubMenuTimer = startSubMenuTimer - 1
+    --     if startSubMenuTimer <= 0 then
+    --         startSubMenu_Open = false
+    --         print("Start SubMenu timeout — hiding UI")
+    --     end
+    -- end
 
-    -- Photo Mode Timer
+    -- Photo Mode Timer-----------------------
     if photoModeTimer > 0 then
         photoModeTimer = photoModeTimer - 1
         if photoModeTimer <= 0 then
@@ -614,7 +644,7 @@ re.on_frame(function()
         end
     end
 
-    -- Quest UI Timer
+    -- Quest UI Timer------------------------
     if questUI_Timer > 0 then
         questUI_Timer = questUI_Timer - 1
         if questUI_Timer <= 0 then
@@ -651,43 +681,7 @@ re.on_frame(function()
     --------------
     ------------State Management----------------
     -------------
-    --- -- local state = nil
-
-        -- if inCamp then
-        --     state = "inCamp"
-        -- elseif localMap_Open then
-        --     state = "mapOpen"
-        -- elseif worldMap_Open then
-        --     state = "worldMap_Open"
-        -- elseif startMenu_Open then
-        --     state = "startmenuOpen"
-        -- elseif startSubMenu_Open then
-        --     state = "startSubMenu_Open"
-        -- elseif uiMask_Open then
-        --     state = "uiMask_Open"
-        -- elseif equipList_Open then
-        --     state = "equipList_Open"
-        -- elseif keyboardSettings_Open then
-        --     state = "keyboardSettings_Open"
-        -- elseif photoMode_Open then
-        --     state = "photoMode_Open"
-        -- elseif bountyMenu_Open then
-        --     state = "bountyMenu_Open"
-        -- elseif gameIsPaused then
-        --     state = "gamePaused"
-        -- elseif itemBar_Open then
-        --     state = "itemBar_Open"
-        -- elseif inTent then
-        --     state = "inTent"    
-        -- elseif voiceChatMenu_Open then
-        --     state = "voiceChatMenu_Open"
-        -- elseif startedDialogue then
-        --     state = "startedDialogue"
-        -- elseif questHasStarted then
-        --     state = "questHasStarted"
-        -- else
-        --     state = "hideUI"
-        -- end
+    
 
     local activeStates = {}
 
