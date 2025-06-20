@@ -30,10 +30,11 @@ local questHasStarted = false
 local IsFinishingQuest = false
 local questUI_Timer = 0
 local QUEST_UI_TIMEOUT = 180
+local questFinished = false
 
 local campSoundPlayed = false
 
-
+local lastIsActive = nil 
 
 local config = {
     version = "1.0.0",
@@ -140,7 +141,7 @@ local function update_timers()
     end
 end
 
--- Use this to start a new timer
+-- Start a new timer
 -- name: string (unique id), duration: int (frames), callback: function
 local function start_timer(name, duration, callback)
     timers[name] = {
@@ -250,6 +251,7 @@ local hook_definitions = {
             start_timer(startSubMenuTimer,START_SUB_MENU_TIMEOUT, function()
                 startSubMenu_Open = false
                 startSubMenuTimer = 0
+                questFinished = false
                 print("Start SubMenu Closed — timer ended")
             end)
             --startSubMenuTimer = START_SUB_MENU_TIMEOUT
@@ -271,6 +273,11 @@ local hook_definitions = {
         { "app.GUI080001","onOpen", function()
             equipList_Open = true
             print("Opened EquipList menu")
+
+        end },
+        { "app.GUI080001","onClose", function()
+            equipList_Open = false
+            print("Closed EquipList menu")
 
         end },
 
@@ -381,6 +388,7 @@ local hook_definitions = {
 
                 inTent = false
                 print("Exiting Tent")
+                
 
         end },
 
@@ -400,7 +408,14 @@ local hook_definitions = {
             virtualMouseMenu_Open = false
             print("Quest Started Showing UI")
         end },
-        { "app.GUI020202", "onOpen", function() questHasStarted = false; print("Quest Ended") end },
+
+        -- Quest End
+        { "app.GUI020202", "onOpen", function()
+            questHasStarted = false
+            questFinished = true
+            print("Quest Ended")
+
+        end },
     }
 
     ----------------------------------------------------------------------------------
@@ -483,7 +498,7 @@ hook_method(
 local function finishMapTransition()
     mapTransitioning = false
     localMapFromWorldMap = false
-    print("Map transition complete — unblocking")
+    --print("Map transition complete — unblocking")
 end
 
 local function clearLingeringVirtualMouse()
@@ -495,7 +510,7 @@ end
 
 local function resolveConflictingMapStates()
     if localMap_Open and worldMap_Open  then
-        print("Both Local and World Map are marked open! Resetting...")
+        --print("Both Local and World Map are marked open! Resetting...")
         -- World map transitioned to local map, so clear world map flag
         worldMap_Open = false
     end
@@ -506,7 +521,7 @@ local function finalizeQueuedMapClose()
         localMap_Open = false
         virtualMouseMenu_Open = false
         localMapCloseQueued = false
-        print("Closing map after transition delay (queued)")
+        --print("Closing map after transition delay (queued)")
     end
 end
 
@@ -523,44 +538,9 @@ end
     local Get_IsActiveQuest = sdk.find_type_definition("app.MissionManager"):get_method("get_IsActiveQuest()")
 
 
--- --- returns true if any enemy still alive
--- function IsPlaying()
---     local mgr = sdk.find_type_definition("GetMissionManager")
---     if mgr == nil then
---         return false
---     end
-
---     -- mgr:get_IsActiveQuest() -- Quest end time still true
---     -- mgr:getAcceptQuestTargetBrowsers() ~= nil and browsers:get_Count() > 0 -- same
---     return Get_IsPlayingQuest:call(mgr)
--- end
-
--- --- returns true if in quest, even if all enemies died.
--- function IsActive()
---     local mgr = sdk.find_type_definition("GetMissionManager")
---     if mgr == nil then
---         return false
---     end
---     return Get_IsActiveQuest:call(mgr)
--- end
-
--- --- returns true if quest is finished (last 60s)
--- function IsFinishing()
---     local mgr = sdk.find_type_definition("GetMissionManager")
---     if mgr == nil then
---         -- log.info("BattleMusicManager is nil, skipped")
---         return false
---     end
---     print("IsFinishingQuest is true")
---     return IsActive() and not IsPlaying()
--- end
-
-
-
-
 
 local function printAllUIStates()
-    print("===== UI STATE DUMP =====")
+    print("<===== UI STATE DUMP =====>")
     print("uiMask_Open:             ", uiMask_Open)
     print("bountyMenu_Open:         ", bountyMenu_Open)
     print("startMenu_Open:          ", startMenu_Open)
@@ -585,7 +565,7 @@ local function printAllUIStates()
     print("mapTransitioning:        ", mapTransitioning)
     print("mapTransitioningFrames:  ", mapTransitioningFrames)
     print("questHasStarted:         ", questHasStarted)
-    print("==========================")
+    print("<==========================>")
 end
 
 
@@ -664,7 +644,21 @@ re.on_frame(function()
     --End 3D Map Transition Logic----------------
     ----------------------------------------------- 
     -------------------------------------------------------------------------------
+    ----
 
+local missionManager = sdk.get_managed_singleton("app.MissionManager")
+if missionManager and Get_IsActiveQuest then
+    local isActive = Get_IsActiveQuest:call(missionManager)
+    if isActive ~= lastIsActive then
+        lastIsActive = isActive
+        print("MissionManager:IsActiveQuest changed :", isActive)
+
+        if not isActive then
+            startSubMenu_Open = false
+            print("Quest ended or loading screen started — closing startSubMenu")
+        end
+    end
+end
 
 
 
@@ -692,6 +686,7 @@ re.on_frame(function()
     if questHasStarted then table.insert(activeStates, "questHasStarted") end
     if voiceChatMenu_Open then table.insert(activeStates, "voiceChatMenu_Open") end
     if keyboardSettings_Open then table.insert(activeStates, "keyboardSettings_Open") end
+    if questFinished then table.insert(activeStates, "questFinished") end
 
 
 local statePriority = {
@@ -700,6 +695,7 @@ local statePriority = {
     "startMenu_Open",
     "itemBar_Open",
     "photoMode_Open",
+    "questFinished",
     "gamePaused",
     "inCamp",
     "equipList_Open",
@@ -747,6 +743,8 @@ end
         questHasStarted = function ()
         end,
         questUI_Timer = function()
+        end,
+        questFinished = function()
         end,
         itemBar_Open = function()
         end,
