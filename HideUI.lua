@@ -261,6 +261,7 @@ local hook_definitions = {
                 startSubMenu_Open = false
                 startSubMenuTimer = 0
                 questFinishing = false
+                
                 print("SubMenuTimer:", startSubMenuTimer)
                 print("Start SubMenu Closed — timer ended")
             end)
@@ -313,7 +314,9 @@ local hook_definitions = {
         { "app.GUI090800", "onOpen", function() bountyMenu_Open = false; print("Closed pause menu") end },
 -------------------------------------------------------------------------------
 ---
+-------------------
     -- Virtual Mouse Menus-----------------------------------------------
+--------------------
         { "app.GUIManager", "onSetVirtualMouse", function()
             if not virtualMouseMenu_Open then
             -- Only set to true if it wasn't already open
@@ -358,8 +361,9 @@ local hook_definitions = {
             
         end },
 ----------------------------------------------------------------------------------------------------------
-
-    --World Map----------------------------------------------------
+----------------
+----------World Map----------------------------------------------------
+-----------------
         { "app.GUI060102", "onOpen", function()
 
             worldMap_Open = true
@@ -418,7 +422,25 @@ local hook_definitions = {
             print("Quest Ended")
 
         end },
-    }
+
+        -- Player starts talking to NPC
+        { "app.DialogueManager", "requestStart", function()
+            startedDialogue = true
+            print("Dialogue started")
+        end },
+
+
+        --endPause
+        --app.DialogueManager.isCharacterTalkable
+        -- Dialogue has ended
+        { "app.DialogueManager", "isCharacterTalkable", function()
+            startedDialogue = false
+            worldMap_Open = false
+            localMap_Open = false
+            startMenu_Open = false
+            print("Dialogue ended")
+        end },
+            }
 
     ----------------------------------------------------------------------------------
     ------------→→End Hook list←←-----------------------------------------------------------------------------------------→→End Hook list←←
@@ -537,11 +559,22 @@ end
     local Get_IsPlayingQuest = sdk.find_type_definition("app.MissionManager"):get_method("get_IsPlayingQuest()")
     local missionManager = sdk.get_managed_singleton("app.MissionManager")
     local Get_IsActiveQuest = sdk.find_type_definition("app.MissionManager"):get_method("get_IsActiveQuest()")
-
-
+-------------------------------------------------------------------------------------------------------------------------
+----
+---
+-----------------
+--------- Dialogue detection----------------------------------------------
+---------------------
 local DialogueManager = sdk.get_managed_singleton("app.DialogueManager")
-local getIsActiveDialogue = sdk.find_type_definition("app.DialogueManager"):get_method("get_IsActiveDialogue()")
+local IsActiveDialogue = sdk.find_type_definition("app.DialogueManager"):get_method("get_IsActiveDialogue()")
 
+-- app.DialogueManager.endPause ---- called when the first dialogue ends when talking to alma in the field and then shows UI
+
+
+--app.DialogueManager.getMainTalkerGameObject
+-- app.DialogueManager.requestStart
+
+----------------------------------------------------------------------------
 
 
 
@@ -669,15 +702,25 @@ re.on_frame(function()
 
 
     -- Dialogue detection
-        if DialogueManager and getIsActiveDialogue then
-            local isActive = getIsActiveDialogue:call(DialogueManager)
+    if DialogueManager and IsActiveDialogue then
+        local isActive = IsActiveDialogue:call(DialogueManager)
 
-            if isActive ~= lastDialogueState then
-                lastDialogueState = isActive
-                startedDialogue = isActive
-                print(isActive and "Player started dialogue" or "❌ Player ended dialogue")
+        if isActive ~= lastDialogueState then
+            lastDialogueState = isActive
+            startedDialogue = isActive
+
+            if isActive then
+                print("Player started dialogue")
+            else
+                -- Clear other UI states if needed
+                worldMap_Open = false
+                localMap_Open = false
+                startMenu_Open = false
+                startSubMenu_Open = false
+                print("Player ended dialogue")
             end
         end
+    end
 
 --------------
 ------------State Management----------------
@@ -696,12 +739,13 @@ re.on_frame(function()
     if startMenu_Open then table.insert(activeStates, "startMenu_Open") end
     if photoMode_Open then table.insert(activeStates, "photoMode_Open") end
     if equipList_Open then table.insert(activeStates, "equipList_Open") end
-    if bountyMenu_Open then table.insert(activeStates, "bountyMenu_Open") end
     if startedDialogue then table.insert(activeStates, "startedDialogue") end
+    if bountyMenu_Open then table.insert(activeStates, "bountyMenu_Open") end
     if questHasStarted then table.insert(activeStates, "questHasStarted") end
     if startSubMenu_Open then table.insert(activeStates, "startSubMenu_Open") end
     if voiceChatMenu_Open then table.insert(activeStates, "voiceChatMenu_Open") end
     if keyboardSettings_Open then table.insert(activeStates, "keyboardSettings_Open") end
+
 
 
     local statePriority = {
@@ -745,19 +789,19 @@ re.on_frame(function()
         end,
         inTent = function()
         end,
-        localMap_Open = function()
-        end,
-        worldMap_Open = function()
-        end,
         gamePaused = function()
         end,
         uiMask_Open = function()
+        end,
+        itemBar_Open = function()
         end,
         questUI_Timer = function()
         end,
         questFinished = function()
         end,
-        itemBar_Open = function()
+        localMap_Open = function()
+        end,
+        worldMap_Open = function()
         end,
         equipList_Open = function()
         end,
