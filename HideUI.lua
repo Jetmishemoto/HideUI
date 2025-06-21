@@ -159,6 +159,9 @@ local function getPlayer()
     if not playerManager then return nil end
     return playerManager:call("getMasterPlayer")
 end
+
+
+
 --  check if communication menu is open
 local function isCommunicationOpen()
     local util = sdk.find_type_definition("app.CommunicationUtil")
@@ -198,6 +201,123 @@ local function checkIfInCampStartup()
 end
 
 
+--------------------------
+-------------------------
+    --Detect end-of-quest----------------------------------------------
+---------------------
+--------------------
+--app.cQuestStart.enter()
+    local Get_QuestDirector = sdk.find_type_definition("app.MissionManager"):get_method("get_QuestDirector()")
+    local Get_IsPlayingQuest = sdk.find_type_definition("app.MissionManager"):get_method("get_IsPlayingQuest()")
+    local missionManager = sdk.get_managed_singleton("app.MissionManager")
+    local Get_IsActiveQuest = sdk.find_type_definition("app.MissionManager"):get_method("get_IsActiveQuest()")
+-------------------------------------------------------------------------------------------------------------------------
+----
+
+-----------------
+--------- Dialogue detection----------------------------------------------
+---------------------
+local DialogueManager = sdk.get_managed_singleton("app.DialogueManager")
+local IsActiveDialogue = sdk.find_type_definition("app.DialogueManager"):get_method("get_IsActiveDialogue()")
+
+-- app.DialogueManager.endPause ---- called when the first dialogue ends when talking to alma in the field and then shows UI
+
+
+--app.DialogueManager.getMainTalkerGameObject
+-- app.DialogueManager.requestStart
+
+
+
+
+-----PauseManager-----------------------------
+hook_method("app.PauseManager", "onAllRequestExecuted",
+    function(retval)
+
+    if inTent then
+        print("Don't change pause state if in tent")
+        return
+    end
+    if questHasStarted then
+        print("Don't change pause state if quest has started")
+        return
+    end
+
+    local pauseManager = sdk.get_managed_singleton("app.PauseManager")
+    if pauseManager then
+        local isPaused = pauseManager:call("get_IsPaused")
+        gameIsPaused = isPaused
+        print(isPaused and "PauseManager.Game paused" or "PauseManager.Game resumed")
+        print("PauseManager.IsPaused:", isPaused)
+    else
+        print("Could not get PauseManager")
+    end
+    return retval
+end)
+-------------------------------------------------------------
+
+--app.PauseManager.setRayTracePause
+
+
+
+-- VoiceChatMenu---------------------------------------------|
+
+-- Voice Chat Menu (Keyboard)
+hook_method(
+    "app.cGUICommonMenu_VoiceChat",
+    "execute(app.MenuDef.ExecuteFrom, System.Object, app.cGUICommonMenuItemExecuteOptionBase, ace.IGUIFlowHandle)",
+    function(args)
+        voiceChatMenu_Open = true
+        print("Voice chat menu executed")
+    end)
+--
+-- Voice Chat Menu (Controller)
+--
+hook_method(
+    "app.cGUISystemModuleSystemInputOpenController.cGUISystemInputOpenCtrlVoiceChatList",
+    "onOpen",
+    function(args)
+        voiceChatMenu_Open = true
+        print(" Voice chat list opened (controller)")
+    end)
+--------------------------------------------
+---
+
+--------
+---Map Transition Logic Methods--------------------------
+--------------
+local function finishMapTransition()
+    mapTransitioning = false
+    localMapFromWorldMap = false
+    --print("Map transition complete — unblocking")
+end
+
+local function clearLingeringVirtualMouse()
+    if not mapTransitioning and virtualMouseMenu_Open and not localMap_Open and not worldMap_Open then
+        virtualMouseMenu_Open = false
+        ---print("Cleared lingering virtualMouseMenu_Open flag")
+    end
+end
+
+local function resolveConflictingMapStates()
+    if localMap_Open and worldMap_Open  then
+        --print("Both Local and World Map are marked open! Resetting...")
+        -- World map transitioned to local map, so clear world map flag
+        worldMap_Open = false
+    end
+end
+
+local function finalizeQueuedMapClose()
+    if localMapCloseQueued then
+        localMap_Open = false
+        virtualMouseMenu_Open = false
+        localMapCloseQueued = false
+        --print("Closing map after transition delay (queued)")
+    end
+end
+
+
+
+
 ---------
 ---------⌈→→Hook list←←⌉------------------------------------------------------------------------------------⌈→→Hook list←←⌉--------
 ---------
@@ -230,6 +350,7 @@ local hook_definitions = {
         { "app.cGUIMapFlowOpenRadarMask", "enter", function()
             keyboardSettings_Open = false;
             startMenu_Open = false;
+            startedDialogue = false;
             print("RadarMask.enter ")
 
         end },
@@ -433,13 +554,13 @@ local hook_definitions = {
         --endPause
         --app.DialogueManager.isCharacterTalkable
         -- Dialogue has ended
-        { "app.DialogueManager", "isCharacterTalkable", function()
-            startedDialogue = false
-            worldMap_Open = false
-            localMap_Open = false
-            startMenu_Open = false
-            print("Dialogue ended")
-        end },
+        -- { "app.DialogueManager", "isCharacterTalkable", function()
+        --     startedDialogue = false
+        --     worldMap_Open = false
+        --     localMap_Open = false
+        --     startMenu_Open = false
+        --     print("Dialogue ended")
+        -- end },
             }
 
     ----------------------------------------------------------------------------------
@@ -447,6 +568,7 @@ local hook_definitions = {
     ---
 
 
+----------------------------------------------------------
 ----------------Initialize hooks---------------
 ----------------------------------------------------------------------------------
 for _, h in ipairs(hook_definitions) do
@@ -461,118 +583,8 @@ end
 
 
 
------PauseManager-----------------------------
-hook_method("app.PauseManager", "onAllRequestExecuted",
-    function(retval)
-
-    if inTent then
-        print("Don't change pause state if in tent")
-        return
-    end
-    if questHasStarted then
-        print("Don't change pause state if quest has started")
-        return
-    end
-
-    local pauseManager = sdk.get_managed_singleton("app.PauseManager")
-    if pauseManager then
-        local isPaused = pauseManager:call("get_IsPaused")
-        gameIsPaused = isPaused
-        print(isPaused and "PauseManager.Game paused" or "PauseManager.Game resumed")
-        print("PauseManager.IsPaused:", isPaused)
-    else
-        print("Could not get PauseManager")
-    end
-    return retval
-end)
--------------------------------------------------------------
-
---app.PauseManager.setRayTracePause
 
 
-
--- VoiceChatMenu---------------------------------------------|
-
--- Voice Chat Menu (Keyboard)
-hook_method(
-    "app.cGUICommonMenu_VoiceChat",
-    "execute(app.MenuDef.ExecuteFrom, System.Object, app.cGUICommonMenuItemExecuteOptionBase, ace.IGUIFlowHandle)",
-    function(args)
-        voiceChatMenu_Open = true
-        print("Voice chat menu executed")
-    end)
---
--- Voice Chat Menu (Controller)
---
-hook_method(
-    "app.cGUISystemModuleSystemInputOpenController.cGUISystemInputOpenCtrlVoiceChatList",
-    "onOpen",
-    function(args)
-        voiceChatMenu_Open = true
-        print(" Voice chat list opened (controller)")
-    end)
---------------------------------------------
----
-
---------
----Map Transition Logic Methods--------------------------
---------------
-local function finishMapTransition()
-    mapTransitioning = false
-    localMapFromWorldMap = false
-    --print("Map transition complete — unblocking")
-end
-
-local function clearLingeringVirtualMouse()
-    if not mapTransitioning and virtualMouseMenu_Open and not localMap_Open and not worldMap_Open then
-        virtualMouseMenu_Open = false
-        ---print("Cleared lingering virtualMouseMenu_Open flag")
-    end
-end
-
-local function resolveConflictingMapStates()
-    if localMap_Open and worldMap_Open  then
-        --print("Both Local and World Map are marked open! Resetting...")
-        -- World map transitioned to local map, so clear world map flag
-        worldMap_Open = false
-    end
-end
-
-local function finalizeQueuedMapClose()
-    if localMapCloseQueued then
-        localMap_Open = false
-        virtualMouseMenu_Open = false
-        localMapCloseQueued = false
-        --print("Closing map after transition delay (queued)")
-    end
-end
-
-
-
---------------------------
--------------------------
-    --Detect end-of-quest----------------------------------------------
----------------------
---------------------
---app.cQuestStart.enter()
-    local Get_QuestDirector = sdk.find_type_definition("app.MissionManager"):get_method("get_QuestDirector()")
-    local Get_IsPlayingQuest = sdk.find_type_definition("app.MissionManager"):get_method("get_IsPlayingQuest()")
-    local missionManager = sdk.get_managed_singleton("app.MissionManager")
-    local Get_IsActiveQuest = sdk.find_type_definition("app.MissionManager"):get_method("get_IsActiveQuest()")
--------------------------------------------------------------------------------------------------------------------------
-----
----
------------------
---------- Dialogue detection----------------------------------------------
----------------------
-local DialogueManager = sdk.get_managed_singleton("app.DialogueManager")
-local IsActiveDialogue = sdk.find_type_definition("app.DialogueManager"):get_method("get_IsActiveDialogue()")
-
--- app.DialogueManager.endPause ---- called when the first dialogue ends when talking to alma in the field and then shows UI
-
-
---app.DialogueManager.getMainTalkerGameObject
--- app.DialogueManager.requestStart
 
 ----------------------------------------------------------------------------
 
@@ -650,7 +662,7 @@ re.on_frame(function()
             print("Photo Mode timeout — hiding UI")
         end
     end
-    
+
     -- Start Quest UI Timer------------------------
     if questUI_Timer > 0 then
         questUI_Timer = questUI_Timer - 1
@@ -673,6 +685,7 @@ re.on_frame(function()
                 print("Map transition complete — unblocking")
             end
         end
+
         -- Clear any leftover virtual mouse state
         clearLingeringVirtualMouse()
         -- only one map type should be open
@@ -700,27 +713,28 @@ re.on_frame(function()
         end
 
 
-
+--app.DialogueManager.<updateMainTalkPlayer>g__findNearestGossipDialogue|257_2(System.Collections.ObjectModel.ReadOnlyCollection`1<ace.cDialogueTalkPlayerBase>)
+--app.DialogueManager.getActualNpcId
     -- Dialogue detection
     if DialogueManager and IsActiveDialogue then
-        local isActive = IsActiveDialogue:call(DialogueManager)
+    local isActive = IsActiveDialogue:call(DialogueManager)
 
-        if isActive ~= lastDialogueState then
-            lastDialogueState = isActive
-            startedDialogue = isActive
+    if isActive ~= lastDialogueState then
+        lastDialogueState = isActive
+        startedDialogue = isActive
 
-            if isActive then
-                print("Player started dialogue")
-            else
-                -- Clear other UI states if needed
-                worldMap_Open = false
-                localMap_Open = false
-                startMenu_Open = false
-                startSubMenu_Open = false
-                print("Player ended dialogue")
-            end
+        if isActive then
+            print("Player started dialogue")
+        else
+            -- Clear other UI states if needed
+            worldMap_Open = false
+            localMap_Open = false
+            startMenu_Open = false
+            startedDialogue = false
+            print("Player ended dialogue")
         end
     end
+end
 
 --------------
 ------------State Management----------------
