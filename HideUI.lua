@@ -31,7 +31,7 @@ local QUEST_START_UI_TIMEOUT = 190
 local questFinishing = false
 
 local startedDialogue = false
-local lastDialogueState = nil
+local lastDialogueState = false
 
 
 local campSoundPlayed = false
@@ -218,7 +218,8 @@ end
 --------- Dialogue detection----------------------------------------------
 ---------------------
 local DialogueManager = sdk.get_managed_singleton("app.DialogueManager")
-local IsActiveDialogue = sdk.find_type_definition("app.DialogueManager"):get_method("get_IsActiveDialogue()")
+local IsSpecificDialogue = DialogueManager
+    and sdk.find_type_definition("app.DialogueManager"):get_method("isOngoingSpecificSituationDialogue")
 
 -- app.DialogueManager.endPause ---- called when the first dialogue ends when talking to alma in the field and then shows UI
 
@@ -493,7 +494,7 @@ local hook_definitions = {
             mapTransitioningFrames = 60
             startSubMenu_Open = false 
             print("World Map Opened")
-        end},
+        end },
         { "app.GUIManager", "isOpenReadyGUI060102", function()
             worldMap_Open = false
             if mapTransitioning then
@@ -543,24 +544,12 @@ local hook_definitions = {
             print("Quest Ended")
 
         end },
-
+    --app.DialogueManager.getMainTalkerGameObject
         -- Player starts talking to NPC
-        { "app.DialogueManager", "requestStart", function()
+        { "app.DialogueManager", "getMainTalkerGameObject", function()
             startedDialogue = true
             print("Dialogue started")
         end },
-
-
-        --endPause
-        --app.DialogueManager.isCharacterTalkable
-        -- Dialogue has ended
-        -- { "app.DialogueManager", "isCharacterTalkable", function()
-        --     startedDialogue = false
-        --     worldMap_Open = false
-        --     localMap_Open = false
-        --     startMenu_Open = false
-        --     print("Dialogue ended")
-        -- end },
             }
 
     ----------------------------------------------------------------------------------
@@ -715,23 +704,26 @@ re.on_frame(function()
 
 --app.DialogueManager.<updateMainTalkPlayer>g__findNearestGossipDialogue|257_2(System.Collections.ObjectModel.ReadOnlyCollection`1<ace.cDialogueTalkPlayerBase>)
 --app.DialogueManager.getActualNpcId
-    -- Dialogue detection
-    if DialogueManager and IsActiveDialogue then
-    local isActive = IsActiveDialogue:call(DialogueManager)
+---------------------------
+    --- Dialogue detection
+-----------------------------------
+        if DialogueManager and IsSpecificDialogue then
+    local isTalking = IsSpecificDialogue:call(DialogueManager)
 
-    if isActive ~= lastDialogueState then
-        lastDialogueState = isActive
-        startedDialogue = isActive
+    if isTalking ~= lastDialogueState then
+        lastDialogueState = isTalking
+        startedDialogue = isTalking
 
-        if isActive then
-            print("Player started dialogue")
+        if isTalking then
+            print("Player started NPC dialogue")
         else
-            -- Clear other UI states if needed
+            print("Player ended NPC dialogue")
+
+            -- Optional cleanup logic:
+            startMenu_Open = false
             worldMap_Open = false
             localMap_Open = false
-            startMenu_Open = false
             startedDialogue = false
-            print("Player ended dialogue")
         end
     end
 end
@@ -847,7 +839,7 @@ end
 
         -- Call the appropriate function based on player actions
         local runPlayerActions = playerGUIActions[currentState]
-        print("Current UI State:", currentState)
+        --print("Current UI State:", currentState)
         if runPlayerActions then runPlayerActions() end
     end)
 -----------------------------------
