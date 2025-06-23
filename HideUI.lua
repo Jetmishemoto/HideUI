@@ -72,36 +72,6 @@ end
 --     end
 -- end
 
---app.GUI030000Accessor
----Item bar PopUP
---app.GUI020012
-
----QuestList on Right
---app.GUI020018
-
---Player names
---app.GUI020016
-
-
---MapDarkring
---app.GUI060010
---Map
---app.GUI060011
-
----Sharpness Bar
---app.GUI020015
-
---Player Stam Bar
---app.GUI020004
-
---Player HP Bar
---app.GUI020003
-
---ItemBar bottom right
---app.GUI020006
-
---Time of day bottomLeft
---app.GUI020009
 
 
 
@@ -215,7 +185,7 @@ end
 ----
 
 -----------------
---------- Dialogue detection----------------------------------------------
+--------- Dialogue detection for Alma?----------------------------------------------
 ---------------------
 local DialogueManager = sdk.get_managed_singleton("app.DialogueManager")
 local IsSpecificDialogue = DialogueManager
@@ -421,8 +391,12 @@ local hook_definitions = {
     ---Photograph Mode---------------------------------------------------
         { "app.mcPhotograph","updatePhotoModeGUIOpenCheck",function()
             photoMode_Open = true
-            photoModeTimer = PHOTO_MODE_TIMEOUT
-            print("Photograph Mode Opened")
+                start_timer("photoMode", PHOTO_MODE_TIMEOUT, function()
+                    photoMode_Open = false
+                    keyboardSettings_Open = false
+                    print("Photo Mode timeout — hiding UI")
+            end)
+                print("Photograph Mode Opened")
         end },
 
     --Keyboard Settings---------------------------------------------------
@@ -453,7 +427,7 @@ local hook_definitions = {
 
 
 ------------------------
-    -- LocalMap---------------------------------------------------------
+    -- Open LocalMap---------------------------------------------------------
         { "app.cGUIMapController", "requestOpen", function()
             mapTransitioning = true
             mapTransitioningFrames = 60
@@ -468,10 +442,10 @@ local hook_definitions = {
             print("Local Map Opened")
 
         end },
-
+    -- Closed LocalMap------------------------------
         { "app.GUIManager", "close3DMap", function()
             if mapTransitioning and virtualMouseMenu_Open then
-                print("Skipping map close — mapTransitioning still active")
+                --print("Skipping map close — mapTransitioning still active")
                 localMapCloseQueued = true
                 return
             end
@@ -479,7 +453,7 @@ local hook_definitions = {
             -- At this point, either virtualMouseMenu was cleared or it doesn't matter
             localMap_Open = false
             virtualMouseMenu_Open = false
-            print("Local Map closed, options menu closed")
+            --print("Local Map closed, options menu closed")
             
         end },
 ----------------------------------------------------------------------------------------------------------
@@ -492,18 +466,18 @@ local hook_definitions = {
             localMapFromWorldMap = true -- flag we're transitioning from world map
             mapTransitioning = true
             mapTransitioningFrames = 60
-            startSubMenu_Open = false 
-            print("World Map Opened")
+            startSubMenu_Open = false
+            --print("World Map Opened")
         end },
         { "app.GUIManager", "isOpenReadyGUI060102", function()
             worldMap_Open = false
             if mapTransitioning then
-                print("World Map closed early — forcibly ending map transition")
+                --print("World Map closed early — forcibly ending map transition")
                 mapTransitioning = false
                 localMapFromWorldMap = false
                 mapTransitioningFrames = 0
             end
-            print("WorldMap Closed")
+            --print("WorldMap Closed")
         end },
 ----------------------------------------------------------------------------------------------------------
 ---
@@ -531,10 +505,14 @@ local hook_definitions = {
         -- Quest Start
         { "app.cQuestStart", "enter", function()
             questHasStarted = true
-            questUI_Timer = QUEST_START_UI_TIMEOUT  -- set to, e.g., 90 for 1.5s
-            startSubMenu_Open = false
-            virtualMouseMenu_Open = false
-            print("Quest Started Showing UI")
+            start_timer("questUI", QUEST_START_UI_TIMEOUT, function()
+                questHasStarted = false
+                keyboardSettings_Open = false
+                print("Quest UI timeout — hiding UI")
+            end)
+                startSubMenu_Open = false
+                virtualMouseMenu_Open = false
+                print("Quest Started Showing UI")
         end },
 
         -- Quest End
@@ -544,11 +522,11 @@ local hook_definitions = {
             print("Quest Ended")
 
         end },
-    --app.DialogueManager.getMainTalkerGameObject
         -- Player starts talking to NPC
         { "app.DialogueManager", "getMainTalkerGameObject", function()
+            --app.DialogueManager.getMainTalkerGameObject
             startedDialogue = true
-            print("Dialogue started")
+            --print("Dialogue started")
         end },
             }
 
@@ -642,26 +620,26 @@ re.on_frame(function()
     end
 
 
-    -- Photo Mode Timer-----------------------
-    if photoModeTimer > 0 then
-        photoModeTimer = photoModeTimer - 1
-        if photoModeTimer <= 0 then
-            photoMode_Open = false
-            keyboardSettings_Open = false
-            print("Photo Mode timeout — hiding UI")
-        end
-    end
+    -- -- Photo Mode Timer-----------------------
+    -- if photoModeTimer > 0 then
+    --     photoModeTimer = photoModeTimer - 1
+    --     if photoModeTimer <= 0 then
+    --         photoMode_Open = false
+    --         keyboardSettings_Open = false
+    --         --print("Photo Mode timeout — hiding UI")
+    --     end
+    -- end
 
-    -- Start Quest UI Timer------------------------
-    if questUI_Timer > 0 then
-        questUI_Timer = questUI_Timer - 1
-        print("QuestUI_Timer:", questUI_Timer)
-        if questUI_Timer <= 0 then
-            questHasStarted = false
-            keyboardSettings_Open = false
-                    print("Quest UI timeout — hiding UI")
-                end
-            end
+    -- -- Start Quest UI Timer------------------------
+    -- if questUI_Timer > 0 then
+    --     questUI_Timer = questUI_Timer - 1
+    --     --print("QuestUI_Timer:", questUI_Timer)
+    --     if questUI_Timer <= 0 then
+    --         questHasStarted = false
+    --         keyboardSettings_Open = false
+    --                 print("Quest UI timeout — hiding UI")
+    --             end
+    --         end
 
 
     --------------
@@ -704,8 +682,10 @@ re.on_frame(function()
 
 --app.DialogueManager.<updateMainTalkPlayer>g__findNearestGossipDialogue|257_2(System.Collections.ObjectModel.ReadOnlyCollection`1<ace.cDialogueTalkPlayerBase>)
 --app.DialogueManager.getActualNpcId
----------------------------
-    --- Dialogue detection
+
+
+---------------------------------
+    ---Dialogue detection-----------
 -----------------------------------
         if DialogueManager and IsSpecificDialogue then
     local isTalking = IsSpecificDialogue:call(DialogueManager)
@@ -719,7 +699,6 @@ re.on_frame(function()
         else
             print("Player ended NPC dialogue")
 
-            -- Optional cleanup logic:
             startMenu_Open = false
             worldMap_Open = false
             localMap_Open = false
@@ -846,9 +825,47 @@ end
 --End frame update-----------------------------------
 -----------------------------------
 
+
+
+
+
+    --[[ ========== Reserved -- Unused Functions ========== ]]
+
+
+--app.GUI030000Accessor
+---Item bar PopUP
+--app.GUI020012
+
+---QuestList on Right
+--app.GUI020018
+
+--Player names
+--app.GUI020016
+
+
+--MapDarkring
+--app.GUI060010
+--Map
+--app.GUI060011
+
+---Sharpness Bar
+--app.GUI020015
+
+--Player Stam Bar
+--app.GUI020004
+
+--Player HP Bar
+--app.GUI020003
+
+--ItemBar bottom right
+--app.GUI020006
+
+--Time of day bottomLeft
+--app.GUI020009
+
+
+
 --app.CommunicationUtil.isOpen
-
-
 --app.cGUIMapController.requestOpen(app.GUIMapDef.MapViewMode, app.GUIMapDef.MapOpenType, app.FieldDef.STAGE)
 --app.cGUIMapController.requestOpen
 --open3DMap()
@@ -907,18 +924,18 @@ end
 
 -- local function playMenuSound()
 
---     print("🏕️ Entered camp")
+--     print("Entered camp")
 
 --         local gui_manager = sdk.get_managed_singleton("app.GUIManager")
 --     if not gui_manager then
---         print("❌ GUIManager not found")
+--         print("GUIManager not found")
 --         return
 --     end
 
 --     -- Get GUI030000Accessor field
 --     local accessor = gui_manager:get_field("<GUI030000Accessor>k__BackingField")
 --     if not accessor then
---         print("❌ GUI030000Accessor field not found")
+--         print("GUI030000Accessor field not found")
 --         return
 --     end
 
@@ -930,7 +947,7 @@ end
 --             print(string.format("Field %d: %s", i, field:get_name()))
 --         end-- usually something like `Array<GUIBase<...>>`
 --     if not components then
---         print("❌ Could not access components from accessor")
+--         print("Could not access components from accessor")
 --         return
 --     end
 
@@ -946,7 +963,7 @@ end
 --     end
 
 --     if not gui030000_instance then
---         print("❌ app.GUI030000 instance not found in accessor components")
+--         print(" app.GUI030000 instance not found in accessor components")
 --         return
 --     end
 
@@ -955,7 +972,7 @@ end
 --     local sound_method = gui030000_type and gui030000_type:get_method("callOptinalSound_ExecuteDirect()")
 
 --     if not sound_method then
---         print("❌ Method callOptinalSound_ExecuteDirect not found")
+--         print("Method callOptinalSound_ExecuteDirect not found")
 --         return
 --     end
 
@@ -965,9 +982,9 @@ end
 --     end)
 
 --     if success then
---         print("✅ Camp enter sound played")
+--         print("Camp enter sound played")
 --     else
---         print("❌ Error playing sound:", err)
+--         print("Error playing sound:", err)
 --     end
 
     
