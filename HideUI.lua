@@ -63,23 +63,8 @@ local function fixConfig()
     end
 end
 
-
--- do
---     if json then
---         local file = json.load_file(configPath)
---         if file then config = file; fixConfig()
---         else json.dump_file(configPath, config) end
---     end
--- end
-
-
-
-
-
-
-
 -------------
----⌈→→hook helper←←⌉---------------
+------------⌈→→hook helper←←⌉---------------
 ------------
 local function hook_method(type_str, method_str, callback)
     local t = sdk.find_type_definition(type_str)
@@ -112,6 +97,7 @@ local function update_timers()
         end
     end
 end
+
 
 -- Start a new timer
 -- name: string (unique id), duration: int (frames), callback: function
@@ -189,11 +175,11 @@ end
 ---------------------
 local DialogueManager = sdk.get_managed_singleton("app.DialogueManager")
 local IsSpecificDialogue = DialogueManager
-    and sdk.find_type_definition("app.DialogueManager"):get_method("isOngoingSpecificSituationDialogue")
+and sdk.find_type_definition("app.DialogueManager"):get_method("isOngoingSpecificSituationDialogue")
+
+
 
 -- app.DialogueManager.endPause ---- called when the first dialogue ends when talking to alma in the field and then shows UI
-
-
 --app.DialogueManager.getMainTalkerGameObject
 -- app.DialogueManager.requestStart
 
@@ -230,6 +216,9 @@ end)
 
 
 
+
+
+
 -- VoiceChatMenu---------------------------------------------|
 
 -- Voice Chat Menu (Keyboard)
@@ -241,7 +230,7 @@ hook_method(
         print("Voice chat menu executed")
     end)
 --
--- Voice Chat Menu (Controller)
+------------------------------Voice Chat Menu (Controller)
 --
 hook_method(
     "app.cGUISystemModuleSystemInputOpenController.cGUISystemInputOpenCtrlVoiceChatList",
@@ -252,6 +241,9 @@ hook_method(
     end)
 --------------------------------------------
 ---
+
+
+
 
 --------
 ---Map Transition Logic Methods--------------------------
@@ -308,8 +300,8 @@ local hook_definitions = {
             print("HUD Inactive")
             end },
 ----------------------------------------------------------------------------------------------------------
-
-    ---UI Mask-------------------------------------------------------
+-----------------
+    ---UI submenus Mask-------------------------------------------------------
         { "app.GUIManager", "<updatePlCommandMask>b__285_0", function()
                 startSubMenu_Open = true
                 startSubMenuTimer = 20
@@ -344,8 +336,9 @@ local hook_definitions = {
             print("SubMenu Closed")
 
         end },
+-----------------------------
 ----------------------------------------------------------------------------------
-
+------------------------------
     --Starting SubMenus------
         { "app.GUIManager", "instantiatePrefab", function()
             startSubMenu_Open = true
@@ -354,7 +347,7 @@ local hook_definitions = {
                 startSubMenuTimer = 0
                 questFinishing = false
                 
-                print("SubMenuTimer:", startSubMenuTimer)
+                --print("SubMenuTimer:", startSubMenuTimer)
                 print("Start SubMenu Closed — timer ended")
             end)
             --startSubMenuTimer = START_SUB_MENU_TIMEOUT
@@ -367,7 +360,6 @@ local hook_definitions = {
     --     { "app.GUI030000", "executeItem(app.user_data.StartMenuData.ItemBase)", function()
             
     --         print("Start SubMenu selected")
-
     --     end },
 
 ----------------------------------------------------------------------------------
@@ -396,7 +388,7 @@ local hook_definitions = {
                     keyboardSettings_Open = false
                     print("Photo Mode timeout — hiding UI")
             end)
-                print("Photograph Mode Opened")
+                --print("Photograph Mode Opened")
         end },
 
     --Keyboard Settings---------------------------------------------------
@@ -421,7 +413,6 @@ local hook_definitions = {
             end
 
         end },
-
 ----------------------------------------------------------------------------------
 ----------------------------------------------------------------------------------------------
 
@@ -620,28 +611,6 @@ re.on_frame(function()
     end
 
 
-    -- -- Photo Mode Timer-----------------------
-    -- if photoModeTimer > 0 then
-    --     photoModeTimer = photoModeTimer - 1
-    --     if photoModeTimer <= 0 then
-    --         photoMode_Open = false
-    --         keyboardSettings_Open = false
-    --         --print("Photo Mode timeout — hiding UI")
-    --     end
-    -- end
-
-    -- -- Start Quest UI Timer------------------------
-    -- if questUI_Timer > 0 then
-    --     questUI_Timer = questUI_Timer - 1
-    --     --print("QuestUI_Timer:", questUI_Timer)
-    --     if questUI_Timer <= 0 then
-    --         questHasStarted = false
-    --         keyboardSettings_Open = false
-    --                 print("Quest UI timeout — hiding UI")
-    --             end
-    --         end
-
-
     --------------
     ---3D Map Transition Logic----------------
     -------------
@@ -685,7 +654,7 @@ re.on_frame(function()
 
 
 ---------------------------------
-    ---Dialogue detection-----------
+    ---Dialogue detection----------------------
 -----------------------------------
         if DialogueManager and IsSpecificDialogue then
     local isTalking = IsSpecificDialogue:call(DialogueManager)
@@ -757,7 +726,7 @@ end
         local currentState = "hideUI"
 
 
-    -- Find the highest priority state that’s active
+        -- Find the highest priority state that’s active
         for _, priority in ipairs(statePriority) do
             for _, state in ipairs(activeStates) do
                 if state == priority then
@@ -816,7 +785,7 @@ end
             end
         end }
 
-        -- Call the appropriate function based on player actions
+    -- Run the actions for the current state
         local runPlayerActions = playerGUIActions[currentState]
         --print("Current UI State:", currentState)
         if runPlayerActions then runPlayerActions() end
@@ -825,12 +794,34 @@ end
 --End frame update-----------------------------------
 -----------------------------------
 
+-- local scriptEnabled = true
+
+--     re.on_draw_ui(function()
+--         if imgui.begin("Hide UI Script") then
+--             local changed, value = imgui.checkbox("Enable Script", scriptEnabled)
+--             if changed then
+--                 scriptEnabled = value
+--             end
+
+--             if scriptEnabled then
+--                 imgui.text_colored("Script is ACTIVE", 0.0, 1.0, 0.0, 1.0)
+--             else
+--                 imgui.text_colored("Script is DISABLED", 1.0, 0.0, 0.0, 1.0)
+--             end
+
+--             imgui.end()
+--         end
+--     end)
 
 
 
 
     --[[ ========== Reserved -- Unused Functions ========== ]]
 
+--local getComponent = sdk.find_type_definition('via.GameObject'):get_method('getComponent(System.Type)')
+    -- local function get_gameobject_component(gameObject, componentType)
+    --     return getComponent:call(gameObject, sdk.typeof(componentType))
+    -- end
 
 --app.GUI030000Accessor
 ---Item bar PopUP
