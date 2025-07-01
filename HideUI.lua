@@ -2,6 +2,7 @@
 local initialized = false
 local forceShowHUD = false
 local uiMask_Open = false
+local lastCanOpenPreparingWindow = false
 local bountyMenu_Open = false
 local startMenu_Open = false
 local startSubMenu_Open = false
@@ -17,7 +18,7 @@ local inCamp = false
 local localMap_Open = false
 local localMapCloseQueued = false
 local worldMap_Open = false
-local localMapFromWorldMap = false -- Flag to track if we're transitioning from world map
+local localMapFromWorldMap = false
 local gameIsPaused = false
 local player_Ready = false
 local itemBar_Open = false
@@ -127,12 +128,35 @@ local function isCommunicationOpen()
     return method:call(nil)
 end
 
+local function get_singleton(type_name)
+    local singleton = sdk.get_managed_singleton(type_name)
+    if not singleton then
+        print("[HideUI] Warning: Could not get singleton:", type_name)
+    end
+    return singleton
+end
+
+local function get_type_definition(type_name)
+    local t = sdk.find_type_definition(type_name)
+    if not t then
+        print("[HideUI] Warning: Could not find type definition: " .. tostring(type_name))
+    end
+    return t
+end
+
+local function get_gui_manager()
+    local gui_manager = sdk.get_managed_singleton("app.GUIManager")
+    if not gui_manager then
+        print("[HideUI] Warning: Could not get app.GUIManager singleton")
+    end
+    return gui_manager
+end
 
 
 
 --------------------- Check if player is in camp at startup--------------
 local function checkIfInCampStartup()
-    local guiManager = sdk.get_managed_singleton("app.GUIManager")
+    local guiManager = get_singleton("app.GUIManager")
     if not guiManager then
         print("GUIManager not available at startup")
         return
@@ -163,19 +187,19 @@ end
 ---------------------
 --------------------
 --app.cQuestStart.enter()
-    local Get_QuestDirector = sdk.find_type_definition("app.MissionManager"):get_method("get_QuestDirector()")
-    local Get_IsPlayingQuest = sdk.find_type_definition("app.MissionManager"):get_method("get_IsPlayingQuest()")
-    local missionManager = sdk.get_managed_singleton("app.MissionManager")
-    local Get_IsActiveQuest = sdk.find_type_definition("app.MissionManager"):get_method("get_IsActiveQuest()")
+    local Get_QuestDirector = get_type_definition("app.MissionManager"):get_method("get_QuestDirector()")
+    local Get_IsPlayingQuest = get_type_definition("app.MissionManager"):get_method("get_IsPlayingQuest()")
+    local missionManager = get_singleton("app.MissionManager")
+    local Get_IsActiveQuest = get_type_definition("app.MissionManager"):get_method("get_IsActiveQuest()")
 -------------------------------------------------------------------------------------------------------------------------
 ----
 
 -----------------
 --------- Dialogue detection for Alma?----------------------------------------------
 ---------------------
-local DialogueManager = sdk.get_managed_singleton("app.DialogueManager")
+local DialogueManager = get_singleton("app.DialogueManager")
 local IsSpecificDialogue = DialogueManager
-and sdk.find_type_definition("app.DialogueManager"):get_method("isOngoingSpecificSituationDialogue")
+and get_type_definition("app.DialogueManager"):get_method("isOngoingSpecificSituationDialogue")
 
 
 
@@ -199,7 +223,7 @@ hook_method("app.PauseManager", "onAllRequestExecuted",
         return
     end
 
-    local pauseManager = sdk.get_managed_singleton("app.PauseManager")
+    local pauseManager = get_singleton("app.PauseManager")
     if pauseManager then
         local isPaused = pauseManager:call("get_IsPaused")
         gameIsPaused = isPaused
@@ -301,12 +325,13 @@ local hook_definitions = {
             end },
 ----------------------------------------------------------------------------------------------------------
 -----------------
+----Needs to be replaced with a better UI mask check
     ---UI submenus Mask-------------------------------------------------------
-        { "app.GUIManager", "<updatePlCommandMask>b__285_0", function()
-                startSubMenu_Open = true
-                startSubMenuTimer = 20
-                --print(startSubMenuTimer)
-        end },
+        -- { "app.GUIManager", "<updatePlCommandMask>b__285_0", function()
+        --         startSubMenu_Open = true
+        --         startSubMenuTimer = 20
+        --         --print(startSubMenuTimer)
+        -- end },
 ----------------------------------------------------------------------------------------------------------
 --------
     -- Radar mask ckeck------------------------ This openes whenever the normal UI is up
@@ -314,6 +339,7 @@ local hook_definitions = {
             keyboardSettings_Open = false;
             startMenu_Open = false;
             startedDialogue = false;
+            localMap_Open = false;
             print("RadarMask.enter ")
 
         end },
@@ -611,6 +637,32 @@ re.on_frame(function()
     end
 
 
+
+-------------------
+-----------------Preparing GUISubMenu Detection----------------------
+--------------------
+    local gui_manager = get_gui_manager()
+    if gui_manager then
+        local canOpenPreparingWindow = gui_manager:call("isCanOpenPreparingWindow")
+
+        -- Detect rising edge: false -> true
+        if canOpenPreparingWindow and not lastCanOpenPreparingWindow then
+            startSubMenu_Open = true
+            start_timer("startSubMenu", START_SUB_MENU_TIMEOUT, function()
+                startSubMenu_Open = false
+                startSubMenuTimer = 0
+                questFinishing = false
+                print("Start SubMenu Closed — timer ended")
+            end)
+
+            print("StartSubMenu detected via isCanOpenPreparingWindow")
+        end
+
+        lastCanOpenPreparingWindow = canOpenPreparingWindow
+
+    end
+------------------------------------------------------------------
+
     --------------
     ---3D Map Transition Logic----------------
     -------------
@@ -634,6 +686,9 @@ re.on_frame(function()
     ------------------------------------------------------------------
 
 
+-----------------
+----Quest Detection-----------------------------------
+------------------
     -- Check if the quest is completed after reward screen
         if missionManager and Get_IsActiveQuest then
             local isActive = Get_IsActiveQuest:call(missionManager)
@@ -647,7 +702,7 @@ re.on_frame(function()
                 end
             end
         end
-
+--------------------------------------------------------------
 
 --app.DialogueManager.<updateMainTalkPlayer>g__findNearestGossipDialogue|257_2(System.Collections.ObjectModel.ReadOnlyCollection`1<ace.cDialogueTalkPlayerBase>)
 --app.DialogueManager.getActualNpcId
@@ -777,9 +832,9 @@ end
         end,
 
         hideUI = function()
-            local gui_manager = sdk.get_managed_singleton("app.GUIManager")
+            local gui_manager = get_gui_manager()
             if not gui_manager then return end
-            local set_HideUI = sdk.find_type_definition("app.GUIManager"):get_method("allGUIForceInvisible")
+            local set_HideUI = get_type_definition("app.GUIManager"):get_method("allGUIForceInvisible")
             if set_HideUI then
                     set_HideUI:call(gui_manager)
             end
