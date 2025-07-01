@@ -206,10 +206,10 @@ end
 ---------------------
 --------------------
 --app.cQuestStart.enter()
-    local Get_QuestDirector = get_type_definition("app.MissionManager"):get_method("get_QuestDirector()")
-    local Get_IsPlayingQuest = get_type_definition("app.MissionManager"):get_method("get_IsPlayingQuest()")
+    local Get_QuestDirector = hook_method("app.MissionManager","get_QuestDirector")
+    local Get_IsPlayingQuest = hook_method("app.MissionManager","get_IsPlayingQuest")
     local missionManager = get_singleton("app.MissionManager")
-    local Get_IsActiveQuest = get_type_definition("app.MissionManager"):get_method("get_IsActiveQuest()")
+    local Get_IsActiveQuest = hook_method("app.MissionManager","get_IsActiveQuest")
 -------------------------------------------------------------------------------------------------------------------------
 ----
 
