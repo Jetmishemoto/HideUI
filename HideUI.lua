@@ -39,6 +39,12 @@ local campSoundPlayed = false
 
 local lastIsActive = nil
 
+local font = nil
+local image = nil
+
+
+
+
 local config = {
     version = "1.0.0",
     hideUI = true, -- Default to hiding UI
@@ -86,7 +92,7 @@ end
 -- Table to hold all your timers
 local timers = {}
 
--- Call this every frame
+
 local function update_timers()
     for name, timer in pairs(timers) do
         if timer.value > 0 then
@@ -135,6 +141,19 @@ local function get_singleton(type_name)
     end
     return singleton
 end
+
+
+local function get_singleton_call(type_name, method_name)
+    local singleton = get_singleton(type_name)
+    if not singleton then return nil end
+    local method = sdk.find_type_definition(type_name):get_method(method_name)
+    if not method then
+        print("[HideUI] Warning: Could not find method", method_name, "in", type_name)
+        return nil
+    end
+    return method:call(singleton)
+end
+
 
 local function get_type_definition(type_name)
     local t = sdk.find_type_definition(type_name)
@@ -323,17 +342,17 @@ local hook_definitions = {
             print("Left camp")
             print("HUD Inactive")
             end },
-----------------------------------------------------------------------------------------------------------
------------------
-----Needs to be replaced with a better UI mask check
+    ----------------------------------------------------------------------------------------------------------
+    -----------------
+    ----Needs to be replaced with a better UI mask check
     ---UI submenus Mask-------------------------------------------------------
         -- { "app.GUIManager", "<updatePlCommandMask>b__285_0", function()
         --         startSubMenu_Open = true
         --         startSubMenuTimer = 20
         --         --print(startSubMenuTimer)
         -- end },
-----------------------------------------------------------------------------------------------------------
---------
+    ----------------------------------------------------------------------------------------------------------
+    --------
     -- Radar mask ckeck------------------------ This openes whenever the normal UI is up
         { "app.cGUIMapFlowOpenRadarMask", "enter", function()
             keyboardSettings_Open = false;
@@ -362,9 +381,9 @@ local hook_definitions = {
             print("SubMenu Closed")
 
         end },
------------------------------
-----------------------------------------------------------------------------------
-------------------------------
+    -----------------------------
+    ----------------------------------------------------------------------------------
+    ------------------------------
     --Starting SubMenus------
         { "app.GUIManager", "instantiatePrefab", function()
             startSubMenu_Open = true
@@ -372,7 +391,7 @@ local hook_definitions = {
                 startSubMenu_Open = false
                 startSubMenuTimer = 0
                 questFinishing = false
-                
+
                 --print("SubMenuTimer:", startSubMenuTimer)
                 print("Start SubMenu Closed — timer ended")
             end)
@@ -384,12 +403,12 @@ local hook_definitions = {
 
     -- --Selecting submenu item?
     --     { "app.GUI030000", "executeItem(app.user_data.StartMenuData.ItemBase)", function()
-            
+
     --         print("Start SubMenu selected")
     --     end },
 
-----------------------------------------------------------------------------------
---------
+    ----------------------------------------------------------------------------------  
+    --------
     --EquipList
         { "app.GUI080001","onOpen", function()
             equipList_Open = true
@@ -404,8 +423,8 @@ local hook_definitions = {
 
 
 
--------------------------------------------------------------
----------------------
+    -------------------------------------------------------------
+    ---------------------
     ---Photograph Mode---------------------------------------------------
         { "app.mcPhotograph","updatePhotoModeGUIOpenCheck",function()
             photoMode_Open = true
@@ -426,11 +445,11 @@ local hook_definitions = {
 
         ----Bounty List ----------------------------------------------------
         { "app.GUI090800", "onOpen", function() bountyMenu_Open = false; print("Closed pause menu") end },
--------------------------------------------------------------------------------
----
--------------------
+    -------------------------------------------------------------------------------
+    ---
+    -------------------
     -- Virtual Mouse Menus-----------------------------------------------
---------------------
+    --------------------
         { "app.GUIManager", "onSetVirtualMouse", function()
             if not virtualMouseMenu_Open then
             -- Only set to true if it wasn't already open
@@ -439,11 +458,11 @@ local hook_definitions = {
             end
 
         end },
-----------------------------------------------------------------------------------
-----------------------------------------------------------------------------------------------
+    ----------------------------------------------------------------------------------
+    ----------------------------------------------------------------------------------------------
 
 
-------------------------
+    ------------------------
     -- Open LocalMap---------------------------------------------------------
         { "app.cGUIMapController", "requestOpen", function()
             mapTransitioning = true
@@ -471,12 +490,12 @@ local hook_definitions = {
             localMap_Open = false
             virtualMouseMenu_Open = false
             --print("Local Map closed, options menu closed")
-            
+        
         end },
-----------------------------------------------------------------------------------------------------------
-----------------
-----------World Map----------------------------------------------------
------------------
+    ----------------------------------------------------------------------------------------------------------  
+    ----------------
+    ----------World Map----------------------------------------------------
+    -----------------
         { "app.GUI060102", "onOpen", function()
 
             worldMap_Open = true
@@ -496,13 +515,13 @@ local hook_definitions = {
             end
             --print("WorldMap Closed")
         end },
-----------------------------------------------------------------------------------------------------------
----
+    ----------------------------------------------------------------------------------------------------------
+    ---
     -- Item Bar---------------------------------------------------
         { "app.GUI020008", "onOpenApp", function() itemBar_Open = true; print("Item bar opened") end },
         { "app.GUI020008PartsPallet", "close", function() itemBar_Open = false; print("Item bar closed") end },
-----------------------------------------------------------------------------------
----
+    ----------------------------------------------------------------------------------
+    ---
     -- Entering Tent-------------------------------------------------------
         { "app.GUIManager", "startTentMenu", function()
             inTent = true
@@ -515,9 +534,10 @@ local hook_definitions = {
                 print("Exiting Tent")
         end },
 
-        ----
+        ---------
         -- VoiceChatMenu----------------------------------------------
         { "app.GUI040001", "guiDestroy", function() voiceChatMenu_Open = false; print("Voice chat list Closed") end },
+        -----------------------------
 
         -- Quest Start
         { "app.cQuestStart", "enter", function()
@@ -531,7 +551,7 @@ local hook_definitions = {
                 virtualMouseMenu_Open = false
                 print("Quest Started Showing UI")
         end },
-
+        ---------------------
         -- Quest End
         { "app.GUI020202", "onOpen", function()
             questHasStarted = false
@@ -539,13 +559,14 @@ local hook_definitions = {
             print("Quest Ended")
 
         end },
+
         -- Player starts talking to NPC
         { "app.DialogueManager", "getMainTalkerGameObject", function()
             --app.DialogueManager.getMainTalkerGameObject
             startedDialogue = true
             --print("Dialogue started")
         end },
-            }
+}
 
     ----------------------------------------------------------------------------------
     ------------→→End Hook list←←-----------------------------------------------------------------------------------------→→End Hook list←←
@@ -562,7 +583,7 @@ for _, h in ipairs(hook_definitions) do
 end
 ----------------------
 -------------------------------------------------------------------------------
--------------------------------------------------------------------------------
+------------------------
 
 
 
@@ -623,9 +644,9 @@ re.on_frame(function()
     end
     update_timers()
 
-    if player_Ready then
-    --printAllUIStates()
-    end
+    -- if player_Ready then
+    --     printAllUIStates()
+    -- end
 
     --Wait until player is ready----------------
     if not player_Ready then
@@ -639,7 +660,7 @@ re.on_frame(function()
 
 
 -------------------
------------------Preparing GUISubMenu Detection----------------------
+------------ GUISubMenu Detection----------------------
 --------------------
     local gui_manager = get_gui_manager()
     if gui_manager then
@@ -781,6 +802,7 @@ end
         local currentState = "hideUI"
 
 
+
         -- Find the highest priority state that’s active
         for _, priority in ipairs(statePriority) do
             for _, state in ipairs(activeStates) do
@@ -792,6 +814,7 @@ end
             if currentState ~= "hideUI" then break end
         end
 
+        _G.HideUI_currentState = currentState
 
     local playerGUIActions = {
         inCamp = function()
@@ -850,6 +873,26 @@ end
 -----------------------------------
 
 
+-- d2d.register(
+-- function()
+--     font = d2d.Font.new("Tahoma", 30)
+--     image = d2d.Image.new("test.png") -- Place in reframework/images/test.png
+-- end,
+-- function()
+--     -- Only draw when UI is hidden
+--     if currentState ~= "hideUI" then return end
+
+--     local screen_w, screen_h = d2d.surface_size()
+--     local img_w, img_h = image:size()
+
+--     -- Draw the image at bottom right with 20px padding
+--     d2d.image(image, screen_w - img_w - 20, screen_h - img_h - 20)
+
+--     -- Draw a simple "UI Hidden" text above the image
+--     local text = "UI Hidden"
+--     local text_w, text_h = font:measure(text)
+--     d2d.text(font, text, screen_w - text_w - 20, screen_h - img_h - text_h - 30, 0xFFFFFFFF)
+-- end)
 
 
 
