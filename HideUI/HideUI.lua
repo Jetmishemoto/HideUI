@@ -30,6 +30,7 @@ local questHasStarted = false
 local questUI_Timer = 0
 local QUEST_START_UI_TIMEOUT = 190
 local questFinishing = false
+local networkErrorActive = false
 
 local startedDialogue = false
 local lastDialogueState = false
@@ -320,6 +321,25 @@ local function finalizeQueuedMapClose()
         --print("Closing map after transition delay (queued)")
     end
 end
+
+
+
+---app.GUIManager.setNetworkRequestEnd
+hook_method("app.GUI040000", "<updateCircleData>b__115_4(System.Boolean, app.NETWORK_ERROR_CODE)",
+    function(args)
+        local is_error = args[2] == true
+        local error_code = args[3]:call("ToString")
+
+        print("Network error callback:", is_error, error_code)
+
+        if is_error then
+            networkErrorActive = true
+            print("Network error detected, locking UI transitions.")
+        else
+            networkErrorActive = false
+            print("Network error cleared.")
+        end
+end)
 
 
 
@@ -659,6 +679,8 @@ re.on_frame(function()
 
 
 
+
+
 -------------------
 ------------ GUISubMenu Detection----------------------
 --------------------
@@ -773,12 +795,15 @@ end
     if bountyMenu_Open then table.insert(activeStates, "bountyMenu_Open") end
     if questHasStarted then table.insert(activeStates, "questHasStarted") end
     if startSubMenu_Open then table.insert(activeStates, "startSubMenu_Open") end
+    if networkErrorActive then table.insert(activeStates, "networkErrorActive") end
     if voiceChatMenu_Open then table.insert(activeStates, "voiceChatMenu_Open") end
     if keyboardSettings_Open then table.insert(activeStates, "keyboardSettings_Open") end
 
 
 
+
     local statePriority = {
+        "networkErrorActive",
         "questHasStarted",
         "startedDialogue",
         "startSubMenu_Open",
@@ -848,6 +873,8 @@ end
         startSubMenu_Open = function()
         end,
         VoiceChatMenu_Open = function()
+        end,
+        networkErrorActive = function()
         end,
         virtualMouseMenuOpen = function()
         end,
