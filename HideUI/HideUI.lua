@@ -94,7 +94,17 @@ local gui_types = {
 }
 --------------------------------------------
 -------------
-
+local grabbed_guis = {}
+local function grab_all_guis()
+    for name, gui_type_str in pairs(gui_types) do
+        local game_obj = grab_gui_gameobject(gui_type_str)
+        if game_obj then
+            grabbed_guis[name] = game_obj
+        else
+            print("[HideUI] Failed to grab GameObject for " .. name)
+        end
+    end
+end
 
 
 
@@ -426,12 +436,62 @@ local function set_gui_visibility(game_obj, state)
         return
     end
 
-    local success1 = game_obj:call("set_DrawSelf(System.Boolean)", state)
-    local success2 = game_obj:call("set_UpdateSelf(System.Boolean)", state)
+    local set_DrawSuccess = game_obj:call("set_DrawSelf(System.Boolean)", state)
+    local set_UpdateSelfSuccess = game_obj:call("set_UpdateSelf(System.Boolean)", state)
 
-    if not success1 or not success2 then
+    if not set_DrawSuccess or not set_UpdateSelfSuccess then
         print("[HideUI] Warning: Failed to set DrawSelf or UpdateSelf for GUI element.")
     end
+end
+
+
+
+
+
+
+
+
+
+---@param gui_types_table table<string, string>
+---@return table<string, userdata>  -- grabbed_guis
+local function grab_all_guis_and_hide(gui_types_table)
+    local grabbed_guis = {}
+
+    for name, type_string in pairs(gui_types_table) do
+        local game_obj = grab_gui_gameobject(type_string)
+        if game_obj then
+            -- Hide immediately
+            set_gui_visibility(game_obj, false)
+            grabbed_guis[name] = game_obj
+            print("[HideUI] Grabbed and hid:", name)
+        else
+            print("[HideUI] Failed to grab:", name)
+        end
+    end
+
+    return grabbed_guis
+end
+
+
+
+---@param gui_types_table table<string, string>
+---@return table<string, userdata>  -- grabbed_guis
+local function grab_all_guis_and_show(gui_types_table)
+    local grabbed_guis = {}
+
+    for name, type_string in pairs(gui_types_table) do
+        local game_obj = grab_gui_gameobject(type_string)
+        if game_obj then
+            -- Hide immediately
+            set_gui_visibility(game_obj, true)
+            grabbed_guis[name] = game_obj
+            print("[HideUI] Grabbed and showing:", name)
+        else
+            print("[HideUI] Failed to grab:", name)
+        end
+    end
+
+    return grabbed_guis
 end
 
 
@@ -446,6 +506,7 @@ local hook_definitions = {
     --Camp Area
         {"app.GUIManager", "requestLifeArea", function()
             inCamp = true
+            grab_all_guis_and_show(gui_types)
             print("Entered camp")
             print("HUD Active")
 
@@ -453,6 +514,7 @@ local hook_definitions = {
         --Laving Camp Area
         { "app.GUIManager", "requestStage", function()
             inCamp = false
+            grab_all_guis_and_hide(gui_types)
             print("Left camp")
             print("HUD Inactive")
             end },
@@ -625,12 +687,14 @@ local hook_definitions = {
     -- Item Bar---------------------------------------------------
         { "app.GUI020008", "onOpenApp", function()
             itemBar_Open = true
+            grab_all_guis_and_show(gui_types)
             print("Item bar opened")
 
         
         end },
         { "app.GUI020008PartsPallet", "close", function() 
             itemBar_Open = false;
+            grab_all_guis_and_hide(gui_types)
             print("Item bar closed")
 
         end },
@@ -886,15 +950,15 @@ end
 
 
 
-    for name, game_obj in pairs(grabbed_guis) do
-        if itemBar_Open then
-            game_obj:call("set_DrawSelf(System.Boolean)", true)
-            game_obj:call("set_UpdateSelf(System.Boolean)", true)
-        else
-            game_obj:call("set_DrawSelf(System.Boolean)", false)
-            game_obj:call("set_UpdateSelf(System.Boolean)", false)
-        end
-    end
+    -- for name, game_obj in pairs(grabbed_guis) do
+    --     if itemBar_Open then
+    --         game_obj:call("set_DrawSelf(System.Boolean)", true)
+    --         game_obj:call("set_UpdateSelf(System.Boolean)", true)
+    --     else
+    --         game_obj:call("set_DrawSelf(System.Boolean)", false)
+    --         game_obj:call("set_UpdateSelf(System.Boolean)", false)
+    --     end
+    -- end
 
 end)
 
