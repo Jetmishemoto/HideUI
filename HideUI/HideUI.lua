@@ -73,22 +73,31 @@ local function fixConfig()
     end
 end
 
-
-
+--⌈→→GUI Types←←⌉-------------------------
+---------------------------------------------------------------
 local gui_types = {
-    ItemBarPopup = "app.GUI020012",
-    QuestListRight = "app.GUI020018",
-    PlayerNames = "app.GUI020016",
-    MapDarkRing = "app.GUI060010",
-    Map = "app.GUI060011",
-    SharpnessBar = "app.GUI020015",
-    PlayerStamBar = "app.GUI020004",
     PlayerHPBar = "app.GUI020003",
+    PlayerStamBar = "app.GUI020004",
     ItemBarBottomRight = "app.GUI020006",
+    AmmoBar = "app.GUI020007",
+    --ItemWheel = "app.GUI020008",
     TimeOfDayBottomLeft = "app.GUI020009",
+    PartyNames = "app.GUI020011",
+    ItemBarPopup = "app.GUI020012",
+    SharpnessBar = "app.GUI020015",
+    PlayerNames = "app.GUI020016",
+    QuestListRight = "app.GUI020018",
+    Map = "app.GUI060001",
+    MapIcons = "app.GUI060002",
+    MapPaths = "app.GUI060008",
+    MapDarkRing = "app.GUI060010",
 }
-
+--------------------------------------------
 -------------
+
+
+
+
 ------------⌈→→hook helper←←⌉---------------
 ------------
 local function hook_method(type_str, method_str, callback)
@@ -143,7 +152,7 @@ end
 
 
 
-
+--Grab GUI GameObject
 local function grab_gui_gameobject(gui_type_string)
     local scene = sdk.call_native_func(
         sdk.get_native_singleton("via.SceneManager"),
@@ -409,6 +418,21 @@ end)
 ---
 
 
+---@param game_obj userdata  -- REManagedObject via.GameObject
+---@param state boolean      -- true = show, false = hide
+local function set_gui_visibility(game_obj, state)
+    if not game_obj then
+        print("[HideUI] set_gui_visibility: game_obj is nil")
+        return
+    end
+
+    local success1 = game_obj:call("set_DrawSelf(System.Boolean)", state)
+    local success2 = game_obj:call("set_UpdateSelf(System.Boolean)", state)
+
+    if not success1 or not success2 then
+        print("[HideUI] Warning: Failed to set DrawSelf or UpdateSelf for GUI element.")
+    end
+end
 
 
 
@@ -432,17 +456,7 @@ local hook_definitions = {
             print("Left camp")
             print("HUD Inactive")
             end },
-    ----------------------------------------------------------------------------------------------------------
-    -----------------
-    ----Needs to be replaced with a better UI mask check
-    ---UI submenus Mask-------------------------------------------------------
-        -- { "app.GUIManager", "<updatePlCommandMask>b__285_0", function()
-        --         startSubMenu_Open = true
-        --         startSubMenuTimer = 20
-        --         --print(startSubMenuTimer)
-        -- end },
-    ----------------------------------------------------------------------------------------------------------
-    --------
+    ----------------------------------------------------------------------------------------
     -- Radar mask ckeck------------------------ This openes whenever the normal UI is up
         { "app.cGUIMapFlowOpenRadarMask", "enter", function()
             keyboardSettings_Open = false;
@@ -615,7 +629,11 @@ local hook_definitions = {
 
         
         end },
-        { "app.GUI020008PartsPallet", "close", function() itemBar_Open = false; print("Item bar closed") end },
+        { "app.GUI020008PartsPallet", "close", function() 
+            itemBar_Open = false;
+            print("Item bar closed")
+
+        end },
     ----------------------------------------------------------------------------------
     ---
     -- Entering Tent-------------------------------------------------------
