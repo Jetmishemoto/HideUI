@@ -128,6 +128,35 @@ end
 
 
 
+
+local function grab_gui_gameobject(gui_type_string)
+    local scene = sdk.call_native_func(
+        sdk.get_native_singleton("via.SceneManager"),
+        sdk.find_type_definition("via.SceneManager"),
+        "get_CurrentScene()"
+    )
+    if not scene then
+        print("Could not get current scene")
+        return nil
+    end
+
+    local array = scene:call("findComponents(System.Type)", sdk.typeof(gui_type_string))
+    local gui_component = array:get_Item(0)
+    if not gui_component then
+        print("Failed to get component for:", gui_type_string)
+        return nil
+    end
+
+    local game_obj = gui_component:call("get_GameObject")
+    if not game_obj then
+        print("Failed to get GameObject for:", gui_type_string)
+        return nil
+    end
+
+    return game_obj
+end
+
+
 --  check if communication menu is open
 local function isCommunicationOpen()
     local util = sdk.find_type_definition("app.CommunicationUtil")
@@ -363,6 +392,22 @@ end)
 --     end)
 -------------------------------------------------
 ---
+
+local gui_types = {
+    ItemBarPopup = "app.GUI020012",
+    QuestListRight = "app.GUI020018",
+    PlayerNames = "app.GUI020016",
+    MapDarkRing = "app.GUI060010",
+    Map = "app.GUI060011",
+    SharpnessBar = "app.GUI020015",
+    PlayerStamBar = "app.GUI020004",
+    PlayerHPBar = "app.GUI020003",
+    ItemBarBottomRight = "app.GUI020006",
+    TimeOfDayBottomLeft = "app.GUI020009",
+}
+
+
+
 
 
 
@@ -615,7 +660,19 @@ local hook_definitions = {
     ----------------------------------------------------------------------------------
     ------------→→End Hook list←←-----------------------------------------------------------------------------------------→→End Hook list←←
     ---
+local grabbed_guis = {}
 
+local function initialize_gui_references()
+    for name, gui_type in pairs(gui_types) do
+        local game_obj = grab_gui_gameobject(gui_type)
+        if game_obj then
+            grabbed_guis[name] = game_obj
+            print("[HideUI] Grabbed:", name, "->", gui_type)
+        else
+            print("[HideUI] Failed to grab:", name, "->", gui_type)
+        end
+    end
+end
 
 ----------------------------------------------------------
 ----------------Initialize hooks---------------
@@ -668,7 +725,11 @@ local function printAllUIStates()
     print("<==========================>")
 end
 
+local hideui_current_state = "hideUI"
 
+function set_hideui_current_state(state)
+    hideui_current_state = state
+end
 
 ---------------------------------------
 ------------------------
@@ -678,6 +739,7 @@ re.on_frame(function()
 
     if not initialized then
         checkIfInCampStartup()
+        initialize_gui_references()
         initialized = true
         print("HideUI initialized",initialized)
     end
@@ -798,56 +860,18 @@ re.on_frame(function()
     end
 end
 
+
+
+
+
 --------------
 ------------State Management----------------
 -------------
     local activeStates = {}
 
-    -- Priority list (insert first = runs first)
-    if inCamp then table.insert(activeStates, "inCamp") end
-    if inTent then table.insert(activeStates, "inTent") end
-    if uiMask_Open then table.insert(activeStates, "uiMask_Open") end
-    if gameIsPaused then table.insert(activeStates, "gamePaused") end
-    if itemBar_Open then table.insert(activeStates, "itemBar_Open") end
-    if chatMenu_Open then table.insert(activeStates, "chatMenu_Open") end
-    if worldMap_Open then table.insert(activeStates, "worldMap_Open") end
-    if localMap_Open then table.insert(activeStates, "localMap_Open") end
-    if questFinishing then table.insert(activeStates, "questFinished") end
-    if startMenu_Open then table.insert(activeStates, "startMenu_Open") end
-    if photoMode_Open then table.insert(activeStates, "photoMode_Open") end
-    if equipList_Open then table.insert(activeStates, "equipList_Open") end
-    if startedDialogue then table.insert(activeStates, "startedDialogue") end
-    if bountyMenu_Open then table.insert(activeStates, "bountyMenu_Open") end
-    if questHasStarted then table.insert(activeStates, "questHasStarted") end
-    if startSubMenu_Open then table.insert(activeStates, "startSubMenu_Open") end
-    if networkErrorActive then table.insert(activeStates, "networkErrorActive") end
-    if voiceChatMenu_Open then table.insert(activeStates, "voiceChatMenu_Open") end
-    if keyboardSettings_Open then table.insert(activeStates, "keyboardSettings_Open") end
 
 
-
-
-    local statePriority = {
-        "networkErrorActive",
-        "questHasStarted",
-        "chatMenu_Open",
-        "startedDialogue",
-        "startSubMenu_Open",
-        "startMenu_Open",
-        "itemBar_Open",
-        "photoMode_Open",
-        "questFinished",
-        "gamePaused",
-        "inCamp",
-        "equipList_Open",
-        "localMap_Open",
-        "worldMap_Open",
-        "bountyMenu_Open",
-        "keyboardSettings_Open",
-        "inTent",
-        "voiceChatMenu_Open",
-    }
-
+  
 
     -- Set default state
         local currentState = "hideUI"
@@ -865,64 +889,30 @@ end
             if currentState ~= "hideUI" then break end
         end
 
-        _G.HideUI_currentState = currentState
 
-    local playerGUIActions = {
-        inCamp = function()
-        end,
-        inTent = function()
-        end,
-        gamePaused = function()
-        end,
-        uiMask_Open = function()
-        end,
-        itemBar_Open = function()
-        end,
-        questUI_Timer = function()
-        end,
-        questFinished = function()
-        end,
-        localMap_Open = function()
-        end,
-        worldMap_Open = function()
-        end,
-        chatMenu_Open = function()
-        end,
-        equipList_Open = function()
-        end,
-        startMenu_Open = function()
-        end,
-        photoMode_Open = function ()
-        end,
-        startedDialogue = function()
-        end,
-        questHasStarted = function ()
-        end,
-        startSubMenu_Open = function()
-        end,
-        VoiceChatMenu_Open = function()
-        end,
-        networkErrorActive = function()
-        end,
-        virtualMouseMenuOpen = function()
-        end,
-        keyboardSettings_Open = function()
-        end,
 
-        hideUI = function()
-            local gui_manager = get_gui_manager()
-            if not gui_manager then return end
-            local set_HideUI = get_type_definition("app.GUIManager"):get_method("allGUIForceInvisible")
-            if set_HideUI then
-                    set_HideUI:call(gui_manager)
-            end
-        end }
+    
+    
 
-    -- Run the actions for the current state
         local runPlayerActions = playerGUIActions[currentState]
-        --print("Current UI State:", currentState)
-        if runPlayerActions then runPlayerActions() end
-    end)
+    if runPlayerActions then runPlayerActions() end
+
+
+    if hideui_current_state == "hideUI" then
+        for name, game_obj in pairs(grabbed_guis) do
+            game_obj:call("set_DrawSelf(System.Boolean)", false)
+            game_obj:call("set_UpdateSelf(System.Boolean)", false)
+        end
+    else
+        for name, game_obj in pairs(grabbed_guis) do
+            game_obj:call("set_DrawSelf(System.Boolean)", true)
+            game_obj:call("set_UpdateSelf(System.Boolean)", true)
+        end
+    end
+
+end)
+
+    
 -----------------------------------
 --End frame update-----------------------------------
 -----------------------------------
