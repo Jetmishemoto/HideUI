@@ -73,6 +73,21 @@ local function fixConfig()
     end
 end
 
+
+
+local gui_types = {
+    ItemBarPopup = "app.GUI020012",
+    QuestListRight = "app.GUI020018",
+    PlayerNames = "app.GUI020016",
+    MapDarkRing = "app.GUI060010",
+    Map = "app.GUI060011",
+    SharpnessBar = "app.GUI020015",
+    PlayerStamBar = "app.GUI020004",
+    PlayerHPBar = "app.GUI020003",
+    ItemBarBottomRight = "app.GUI020006",
+    TimeOfDayBottomLeft = "app.GUI020009",
+}
+
 -------------
 ------------⌈→→hook helper←←⌉---------------
 ------------
@@ -393,19 +408,6 @@ end)
 -------------------------------------------------
 ---
 
-local gui_types = {
-    ItemBarPopup = "app.GUI020012",
-    QuestListRight = "app.GUI020018",
-    PlayerNames = "app.GUI020016",
-    MapDarkRing = "app.GUI060010",
-    Map = "app.GUI060011",
-    SharpnessBar = "app.GUI020015",
-    PlayerStamBar = "app.GUI020004",
-    PlayerHPBar = "app.GUI020003",
-    ItemBarBottomRight = "app.GUI020006",
-    TimeOfDayBottomLeft = "app.GUI020009",
-}
-
 
 
 
@@ -607,7 +609,12 @@ local hook_definitions = {
     ----------------------------------------------------------------------------------------------------------
     ---
     -- Item Bar---------------------------------------------------
-        { "app.GUI020008", "onOpenApp", function() itemBar_Open = true; print("Item bar opened") end },
+        { "app.GUI020008", "onOpenApp", function()
+            itemBar_Open = true
+            print("Item bar opened")
+
+        
+        end },
         { "app.GUI020008PartsPallet", "close", function() itemBar_Open = false; print("Item bar closed") end },
     ----------------------------------------------------------------------------------
     ---
@@ -727,9 +734,6 @@ end
 
 local hideui_current_state = "hideUI"
 
-function set_hideui_current_state(state)
-    hideui_current_state = state
-end
 
 ---------------------------------------
 ------------------------
@@ -864,49 +868,13 @@ end
 
 
 
---------------
-------------State Management----------------
--------------
-    local activeStates = {}
-
-
-
-  
-
-    -- Set default state
-        local currentState = "hideUI"
-
-
-
-        -- Find the highest priority state that’s active
-        for _, priority in ipairs(statePriority) do
-            for _, state in ipairs(activeStates) do
-                if state == priority then
-                    currentState = priority
-                    break
-                end
-            end
-            if currentState ~= "hideUI" then break end
-        end
-
-
-
-    
-    
-
-        local runPlayerActions = playerGUIActions[currentState]
-    if runPlayerActions then runPlayerActions() end
-
-
-    if hideui_current_state == "hideUI" then
-        for name, game_obj in pairs(grabbed_guis) do
-            game_obj:call("set_DrawSelf(System.Boolean)", false)
-            game_obj:call("set_UpdateSelf(System.Boolean)", false)
-        end
-    else
-        for name, game_obj in pairs(grabbed_guis) do
+    for name, game_obj in pairs(grabbed_guis) do
+        if itemBar_Open then
             game_obj:call("set_DrawSelf(System.Boolean)", true)
             game_obj:call("set_UpdateSelf(System.Boolean)", true)
+        else
+            game_obj:call("set_DrawSelf(System.Boolean)", false)
+            game_obj:call("set_UpdateSelf(System.Boolean)", false)
         end
     end
 
