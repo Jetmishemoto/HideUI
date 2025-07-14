@@ -31,6 +31,8 @@ local questUI_Timer = 0
 local QUEST_START_UI_TIMEOUT = 190
 local questFinishing = false
 local networkErrorActive = false
+local chatMenu_Open = false
+
 
 local startedDialogue = false
 local lastDialogueState = false
@@ -90,7 +92,7 @@ local function hook_method(type_str, method_str, callback)
     sdk.hook(method, callback)
 end
 
--- Table to hold all your timers
+
 local timers = {}
 
 
@@ -325,7 +327,9 @@ end
 
 
 ---app.GUIManager.setNetworkRequestEnd
-hook_method("app.GUI040000", "<updateCircleData>b__115_4(System.Boolean, app.NETWORK_ERROR_CODE)",
+---"app.GUI040000", onOpen?
+hook_method("app.GUI040000",
+"<updateCircleData>b__115_4(System.Boolean, app.NETWORK_ERROR_CODE)",
     function(args)
         local is_error = args[2] == true
         local error_code = args[3]:call("ToString")
@@ -340,6 +344,25 @@ hook_method("app.GUI040000", "<updateCircleData>b__115_4(System.Boolean, app.NET
             print("Network error cleared.")
         end
 end)
+
+
+------------------------------
+-----Chat menu-----------
+------------------------------
+hook_method("app.GUIFlowChatLogCommunication",
+"start(app.GUIFlowChatLogCommunication.BOOT, ace.IGUIFlowHandle)",
+    function(args)
+        chatMenu_Open = true
+        print("Chat menu opened")
+end)
+
+-- hook_method("ace.GUIManager","refreshChatLog",
+--     function()
+--             chatMenu_Open = false
+--             print("Chat menu closed")
+--     end)
+-------------------------------------------------
+---
 
 
 
@@ -379,6 +402,7 @@ local hook_definitions = {
             startMenu_Open = false;
             startedDialogue = false;
             localMap_Open = false;
+            chatMenu_Open = false;
             print("RadarMask.enter ")
 
         end },
@@ -785,6 +809,7 @@ end
     if uiMask_Open then table.insert(activeStates, "uiMask_Open") end
     if gameIsPaused then table.insert(activeStates, "gamePaused") end
     if itemBar_Open then table.insert(activeStates, "itemBar_Open") end
+    if chatMenu_Open then table.insert(activeStates, "chatMenu_Open") end
     if worldMap_Open then table.insert(activeStates, "worldMap_Open") end
     if localMap_Open then table.insert(activeStates, "localMap_Open") end
     if questFinishing then table.insert(activeStates, "questFinished") end
@@ -805,6 +830,7 @@ end
     local statePriority = {
         "networkErrorActive",
         "questHasStarted",
+        "chatMenu_Open",
         "startedDialogue",
         "startSubMenu_Open",
         "startMenu_Open",
@@ -859,6 +885,8 @@ end
         localMap_Open = function()
         end,
         worldMap_Open = function()
+        end,
+        chatMenu_Open = function()
         end,
         equipList_Open = function()
         end,
@@ -983,13 +1011,6 @@ end
 --Time of day bottomLeft
 --app.GUI020009
 
-
-
---app.CommunicationUtil.isOpen
---app.cGUIMapController.requestOpen(app.GUIMapDef.MapViewMode, app.GUIMapDef.MapOpenType, app.FieldDef.STAGE)
---app.cGUIMapController.requestOpen
---open3DMap()
-
 --open StartMenu
 --app.cGUISystemModuleSystemInputOpenController.cGUISystemInputOpenCtrlChatLog.checkOpenInput()
 --app.cGUISystemModuleSystemInputOpenController.cGUISystemInputOpenCtrlStartMenu.checkOpenInput()
@@ -1000,23 +1021,6 @@ end
 --app.HunterZoneController.update()
 --app.GUIManager.requestLifeArea
 
-
- -----app.GUIID.ID[]
- ------↓
--- Method: Set
--- Method: Get
--- Method: Address
--- Method: GetEnumerator
--- Method: Add
--- Method: Clear
--- Method: Contains
--- Method: CopyTo
--- Method: Remove
--- Method: get_Item
--- Method: set_Item
--- Method: IndexOf
--- Method: Insert
--- Method: RemoveAt
 
     -- local gm = sdk.get_managed_singleton("app.GUIManager")
     -- if not gm then
@@ -1096,7 +1100,7 @@ end
 --         return
 --     end
 
---     -- Call it!
+
 --     local success, err = pcall(function()
 --         sound_method:call(gui030000_instance)
 --     end)
@@ -1110,34 +1114,10 @@ end
     
 -- end
 
-
-
-
--------------------Functions we might want to hook
 ---
 ---  -- -- Game Pause (Specialty Guide UI)
     --     { "app.GUIManager", "onOpenSpecialtyGuideUI", function() gamePaused = true; print("Game paused") end },
     --     { "app.GUIManager", "setupEnergyGauge", function() gamePaused = false; print("Game resumed") end },
-
-
-
-
-
-
-
---app.cGUICommonMenu_VoiceChat.get_OpenGUIID()
---ace.GUIBase`2<app.GUIID.ID,app.GUIFunc.TYPE>.onDestroy()
-
---ace.GUIBase`2<app.GUIID.ID,app.GUIFunc.TYPE>.toVisible()
-
---app.cGUIMenuShutdownCtrl.isCutScenePlaying
-
---app.GUI060102.onOpen()
---app.cGUICommonMenu_ItemPouch.get_OpenGUIID
-
---app.GUIManager.<updatePlCommandMask>b__285_0
---app.GUIManager.getWishlistItemFlagTable
-
 
 
 --Bounty List from pause menu
@@ -1153,36 +1133,3 @@ end
 --app.GUI040001.onTriggerSoundOpen(System.Boolean)
 --onOpen(app.GUIID.ID, via.gui.Control, System.Boolean, System.Int32)
 
-
-----When quit and save is selected
---app.GUIManager.getNotifyWindowInfo
-
---UI Mask when in options menu
---app.GUIManager.<updatePlCommandMask>b__285_0
-
---Opening a StartSubMenu and other submenus
---app.GUIManager.instantiatePrefab
-
---------------------
-
--------------------------------------------------------------
-
----PauseManager Hook--
-
--- sdk.hook(
---     sdk.find_type_definition("app.PauseManager"):get_method("onAllRequestExecuted"),
---     function(args) -- before call (optional)
---         return sdk.PreHookResult.CALL
---     end,
---     function(retval) -- after call
---         local pauseManager = sdk.get_managed_singleton("app.PauseManager")
---         if pauseManager then
---             local isPaused = pauseManager:call("get_IsPaused")
---             gamePaused = isPaused
---             print(isPaused and "Game paused " or "Game resumed")
---         else
---             print("Could not get PauseManager")
---         end
---         return retval
---     end
--- )
