@@ -1,4 +1,7 @@
 
+local scriptEnabled = true
+
+
 local initialized = false
 local forceShowHUD = false
 local uiMask_Open = false
@@ -74,6 +77,9 @@ local function fixConfig()
     end
 end
 
+
+
+-------------------------
 --⌈→→GUI Types←←⌉-------------------------
 ---------------------------------------------------------------
 local gui_types = {
@@ -94,7 +100,7 @@ local gui_types = {
     MapPaths = "app.GUI060008",
     MapDarkRing = "app.GUI060010",
 }
---------------------------------------------
+-------------------------------------------------------------------------------
 -------------
 
 
@@ -498,6 +504,7 @@ local hook_definitions = {
 
     --Camp Area
         {"app.GUIManager", "requestLifeArea", function()
+
             inCamp = true
             grab_all_guis_and_show(gui_types)
             print("Entered camp")
@@ -506,6 +513,7 @@ local hook_definitions = {
         end },
         --Laving Camp Area
         { "app.GUIManager", "requestStage", function()
+
             inCamp = false
             grab_all_guis_and_hide(gui_types)
             print("Left camp")
@@ -514,6 +522,7 @@ local hook_definitions = {
     ----------------------------------------------------------------------------------------
     -- Radar mask ckeck------------------------ This openes whenever the normal UI is up
         { "app.cGUIMapFlowOpenRadarMask", "enter", function()
+            
             keyboardSettings_Open = false;
             startMenu_Open = false;
             startedDialogue = false;
@@ -526,6 +535,7 @@ local hook_definitions = {
     -- Pause Menu-----------------------------------------------------------
         { "app.GUI030000", "onOpen", function()
 
+
             startMenu_Open = true;
             startSubMenu_Open = false;
             keyboardSettings_Open = false;
@@ -534,6 +544,7 @@ local hook_definitions = {
         end },
     ---Pause Menu Close
         { "app.GUI030000", "onClose", function()
+
             startMenu_Open =false
             uiMask_Open = false
             equipList_Open = false
@@ -546,6 +557,7 @@ local hook_definitions = {
     ------------------------------
     --Starting SubMenus------
         { "app.GUIManager", "instantiatePrefab", function()
+            
             startSubMenu_Open = true
             start_timer(startSubMenuTimer,START_SUB_MENU_TIMEOUT, function()
                 startSubMenu_Open = false
@@ -571,11 +583,13 @@ local hook_definitions = {
     --------
     --EquipList
         { "app.GUI080001","onOpen", function()
+            
             equipList_Open = true
             print("Opened EquipList menu")
 
         end },
         { "app.GUI080001","onClose", function()
+        
             equipList_Open = false
             print("Closed EquipList menu")
 
@@ -587,6 +601,7 @@ local hook_definitions = {
     ---------------------
     ---Photograph Mode---------------------------------------------------
         { "app.mcPhotograph","updatePhotoModeGUIOpenCheck",function()
+            
             photoMode_Open = true
                 start_timer("photoMode", PHOTO_MODE_TIMEOUT, function()
                     photoMode_Open = false
@@ -598,19 +613,25 @@ local hook_definitions = {
 
     --Keyboard Settings---------------------------------------------------
         { "app.GUI030000","executeItem(app.user_data.StartMenuData.ItemBase)",function()
+            
             keyboardSettings_Open = true
             print("KeyboardSettings Opened")
         end },
 
 
         ----Bounty List ----------------------------------------------------
-        { "app.GUI090800", "onOpen", function() bountyMenu_Open = false; print("Closed pause menu") end },
+        { "app.GUI090800", "onOpen", function()
+            
+            bountyMenu_Open = false; print("Closed pause menu") 
+
+            end },
     -------------------------------------------------------------------------------
     ---
     -------------------
     -- Virtual Mouse Menus-----------------------------------------------
     --------------------
         { "app.GUIManager", "onSetVirtualMouse", function()
+            
             if not virtualMouseMenu_Open then
             -- Only set to true if it wasn't already open
             virtualMouseMenu_Open = true
@@ -625,6 +646,7 @@ local hook_definitions = {
     ------------------------
     -- Open LocalMap---------------------------------------------------------
         { "app.cGUIMapController", "requestOpen", function()
+
             mapTransitioning = true
             mapTransitioningFrames = 60
 
@@ -640,6 +662,7 @@ local hook_definitions = {
         end },
     -- Closed LocalMap------------------------------
         { "app.GUIManager", "close3DMap", function()
+            
             if mapTransitioning and virtualMouseMenu_Open then
                 --print("Skipping map close — mapTransitioning still active")
                 localMapCloseQueued = true
@@ -657,7 +680,7 @@ local hook_definitions = {
     ----------World Map----------------------------------------------------
     -----------------
         { "app.GUI060102", "onOpen", function()
-
+            
             worldMap_Open = true
             localMapFromWorldMap = true -- flag we're transitioning from world map
             mapTransitioning = true
@@ -666,6 +689,7 @@ local hook_definitions = {
             --print("World Map Opened")
         end },
         { "app.GUIManager", "isOpenReadyGUI060102", function()
+            
             worldMap_Open = false
             if mapTransitioning then
                 --print("World Map closed early — forcibly ending map transition")
@@ -679,13 +703,15 @@ local hook_definitions = {
     ---
     -- Item Bar---------------------------------------------------
         { "app.GUI020008", "onOpenApp", function()
+            
             itemBar_Open = true
             grab_all_guis_and_show(gui_types)
             print("Item bar opened")
 
         
         end },
-        { "app.GUI020008PartsPallet", "close", function() 
+        { "app.GUI020008PartsPallet", "close", function()
+            
             itemBar_Open = false;
             grab_all_guis_and_hide(gui_types)
             print("Item bar closed")
@@ -707,11 +733,16 @@ local hook_definitions = {
 
         ---------
         -- VoiceChatMenu----------------------------------------------
-        { "app.GUI040001", "guiDestroy", function() voiceChatMenu_Open = false; print("Voice chat list Closed") end },
+        { "app.GUI040001", "guiDestroy", function()
+        
+            voiceChatMenu_Open = false; print("Voice chat list Closed") 
+
+            end },
         -----------------------------
 
         -- Quest Start
         { "app.cQuestStart", "enter", function()
+            
             questHasStarted = true
             start_timer("questUI", QUEST_START_UI_TIMEOUT, function()
                 questHasStarted = false
@@ -725,6 +756,7 @@ local hook_definitions = {
         ---------------------
         -- Quest End
         { "app.GUI020202", "onOpen", function()
+            
             questHasStarted = false
             questFinishing = true
             print("Quest Ended")
@@ -733,6 +765,7 @@ local hook_definitions = {
 
         -- Player starts talking to NPC
         { "app.DialogueManager", "getMainTalkerGameObject", function()
+            
             --app.DialogueManager.getMainTalkerGameObject
             startedDialogue = true
             --print("Dialogue started")
@@ -819,6 +852,7 @@ end
 -- Main frame update-------------------------------
 --------------------
 re.on_frame(function()
+    
 
     if not initialized then
         checkIfInCampStartup()
@@ -945,22 +979,22 @@ end
 
 local currentState = "hideUI"
 
--- Emergency manual show override with "*""
-if imgui.is_key_pressed(0x6A) then  --(*)
-    manual_show_override = not manual_show_override
-    if manual_show_override then
-        print("[HideUI] Manual override: UI forced VISIBLE (F11 toggled ON)")
-        set_all_guis_visibility(true)
-    else
-        print("[HideUI] Manual override: Returning UI control to state machine (F11 toggled OFF)")
-        -- Immediately re-sync visibility
-        if currentState == "hideUI" then
-            set_all_guis_visibility(false)
-        else
-            set_all_guis_visibility(true)
-        end
-    end
-end
+-- -- Emergency manual show override with "*""
+-- if imgui.is_key_pressed(0x6A) then  --(*)
+--     manual_show_override = not manual_show_override
+--     if manual_show_override then
+--         print("[HideUI] Manual override: UI forced VISIBLE (F11 toggled ON)")
+--         set_all_guis_visibility(true)
+--     else
+--         print("[HideUI] Manual override: Returning UI control to state machine (F11 toggled OFF)")
+--         -- Immediately re-sync visibility
+--         if currentState == "hideUI" then
+--             set_all_guis_visibility(false)
+--         else
+--             set_all_guis_visibility(true)
+--         end
+--     end
+-- end
 ---------------------
 ------- State Tracking
 ------------------------------
@@ -986,6 +1020,7 @@ end
         if keyboardSettings_Open then table.insert(activeStates, "keyboardSettings_Open") end
 
         local statePriority = {
+            "localMap_Open",
             "networkErrorActive",
             "questHasStarted",
             "chatMenu_Open",
@@ -998,7 +1033,6 @@ end
             "gamePaused",
             "inCamp",
             "equipList_Open",
-            "localMap_Open",
             "worldMap_Open",
             "bountyMenu_Open",
             "keyboardSettings_Open",
@@ -1020,10 +1054,10 @@ end
         -------------------------
         -- HUD Visibility Logic
         -------------------------
-      if not manual_show_override then
-    if currentState == "hideUI" then
+    if not manual_show_override then
+        if currentState == "hideUI" then
         set_all_guis_visibility(false)
-    else
+        else
         set_all_guis_visibility(true)
     end
 end
@@ -1031,61 +1065,41 @@ end
 
     end)
 
+
+
+
     -----------------------------------
     --End frame update-----------------------------------
     -----------------------------------
 
-    -- for name, game_obj in pairs(grabbed_guis) do
-    --     if itemBar_Open then
-    --         game_obj:call("set_DrawSelf(System.Boolean)", true)
-    --         game_obj:call("set_UpdateSelf(System.Boolean)", true)
-    --     else
-    --         game_obj:call("set_DrawSelf(System.Boolean)", false)
-    --         game_obj:call("set_UpdateSelf(System.Boolean)", false)
-    --     end
-    -- end
-    
--- d2d.register(
--- function()
---     font = d2d.Font.new("Tahoma", 30)
---     image = d2d.Image.new("test.png") -- Place in reframework/images/test.png
--- end,
--- function()
---     -- Only draw when UI is hidden
---     if currentState ~= "hideUI" then return end
 
---     local screen_w, screen_h = d2d.surface_size()
---     local img_w, img_h = image:size()
 
---     -- Draw the image at bottom right with 20px padding
---     d2d.image(image, screen_w - img_w - 20, screen_h - img_h - 20)
 
---     -- Draw a simple "UI Hidden" text above the image
---     local text = "UI Hidden"
---     local text_w, text_h = font:measure(text)
---     d2d.text(font, text, screen_w - text_w - 20, screen_h - img_h - text_h - 30, 0xFFFFFFFF)
+-- re.on_draw_ui(function()
+--     if imgui.begin_window("Hide UI Script") then
+--         local changed, value = imgui.checkbox("Enable Script", scriptEnabled)
+--         if changed then
+--             scriptEnabled = value
+
+--             if not scriptEnabled then
+--                 -- When disabled, force UI VISIBLE
+--                 set_all_guis_visibility(true)
+--                 print("[HideUI] Script disabled via GUI, UI forced visible.")
+--             else
+--                 print("[HideUI] Script enabled via GUI.")
+--             end
+--         end
+
+--         if scriptEnabled then
+--             imgui.text_colored("Script is ACTIVE", 0.0, 1.0, 0.0, 1.0)
+--         else
+--             imgui.text_colored("Script is DISABLED", 1.0, 0.0, 0.0, 1.0)
+--         end
+
+--         imgui.end_window()
+--     end
 -- end)
 
-
-
--- local scriptEnabled = true
-
---     re.on_draw_ui(function()
---         if imgui.begin("Hide UI Script") then
---             local changed, value = imgui.checkbox("Enable Script", scriptEnabled)
---             if changed then
---                 scriptEnabled = value
---             end
-
---             if scriptEnabled then
---                 imgui.text_colored("Script is ACTIVE", 0.0, 1.0, 0.0, 1.0)
---             else
---                 imgui.text_colored("Script is DISABLED", 1.0, 0.0, 0.0, 1.0)
---             end
-
---             imgui.end()
---         end
---     end)
 
 
 
