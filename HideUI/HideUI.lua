@@ -45,6 +45,7 @@ local lastIsActive = nil
 local font = nil
 local image = nil
 
+local manual_show_override = false
 
 
 
@@ -79,7 +80,7 @@ local gui_types = {
     PlayerHPBar = "app.GUI020003",
     PlayerStamBar = "app.GUI020004",
     ItemBarBottomRight = "app.GUI020006",
-    AmmoBar = "app.GUI020007",
+    --AmmoBar = "app.GUI020007",
     --ItemWheel = "app.GUI020008",
     TimeOfDayBottomLeft = "app.GUI020009",
     PartyNames = "app.GUI020011",
@@ -87,6 +88,7 @@ local gui_types = {
     SharpnessBar = "app.GUI020015",
     PlayerNames = "app.GUI020016",
     QuestListRight = "app.GUI020018",
+    --AimReticle = "app.GUI020019",
     Map = "app.GUI060001",
     MapIcons = "app.GUI060002",
     MapPaths = "app.GUI060008",
@@ -94,20 +96,12 @@ local gui_types = {
 }
 --------------------------------------------
 -------------
+
+
 local grabbed_guis = {}
-local function grab_all_guis()
-    for name, gui_type_str in pairs(gui_types) do
-        local game_obj = grab_gui_gameobject(gui_type_str)
-        if game_obj then
-            grabbed_guis[name] = game_obj
-        else
-            print("[HideUI] Failed to grab GameObject for " .. name)
-        end
-    end
-end
+local timers = {}
 
-
-
+--app.GUIActionGuideParamGetter.checkCurrentAmmoToShoot_Light()
 ------------⌈→→hook helper←←⌉---------------
 ------------
 local function hook_method(type_str, method_str, callback)
@@ -127,7 +121,6 @@ local function hook_method(type_str, method_str, callback)
 end
 
 
-local timers = {}
 
 
 local function update_timers()
@@ -452,6 +445,7 @@ end
 
 
 
+
 ---@param gui_types_table table<string, string>
 ---@return table<string, userdata>  -- grabbed_guis
 local function grab_all_guis_and_hide(gui_types_table)
@@ -493,7 +487,6 @@ local function grab_all_guis_and_show(gui_types_table)
 
     return grabbed_guis
 end
-
 
 
 
@@ -748,20 +741,7 @@ local hook_definitions = {
 
     ----------------------------------------------------------------------------------
     ------------→→End Hook list←←-----------------------------------------------------------------------------------------→→End Hook list←←
-    ---
-local grabbed_guis = {}
 
-local function initialize_gui_references()
-    for name, gui_type in pairs(gui_types) do
-        local game_obj = grab_gui_gameobject(gui_type)
-        if game_obj then
-            grabbed_guis[name] = game_obj
-            print("[HideUI] Grabbed:", name, "->", gui_type)
-        else
-            print("[HideUI] Failed to grab:", name, "->", gui_type)
-        end
-    end
-end
 
 ----------------------------------------------------------
 ----------------Initialize hooks---------------
@@ -777,6 +757,18 @@ end
 
 
 
+--Initialize grabbed_guis table
+local function initialize_gui_references()
+    for name, gui_type in pairs(gui_types) do
+        local game_obj = grab_gui_gameobject(gui_type)
+        if game_obj then
+            grabbed_guis[name] = game_obj
+            print("[HideUI] Grabbed:", name, "->", gui_type)
+        else
+            print("[HideUI] Failed to grab:", name, "->", gui_type)
+        end
+    end
+end
 
 
 
@@ -814,7 +806,12 @@ local function printAllUIStates()
     print("<==========================>")
 end
 
-local hideui_current_state = "hideUI"
+local function set_all_guis_visibility(state)
+    for name, game_obj in pairs(grabbed_guis) do
+        set_gui_visibility(game_obj, state)
+    end
+end
+
 
 
 ---------------------------------------
@@ -946,9 +943,97 @@ re.on_frame(function()
     end
 end
 
+local currentState = "hideUI"
+
+-- Emergency manual show override with "*""
+if imgui.is_key_pressed(0x6A) then  --(*)
+    manual_show_override = not manual_show_override
+    if manual_show_override then
+        print("[HideUI] Manual override: UI forced VISIBLE (F11 toggled ON)")
+        set_all_guis_visibility(true)
+    else
+        print("[HideUI] Manual override: Returning UI control to state machine (F11 toggled OFF)")
+        -- Immediately re-sync visibility
+        if currentState == "hideUI" then
+            set_all_guis_visibility(false)
+        else
+            set_all_guis_visibility(true)
+        end
+    end
+end
+---------------------
+------- State Tracking
+------------------------------
+        local activeStates = {}
+        if inCamp then table.insert(activeStates, "inCamp") end
+        if inTent then table.insert(activeStates, "inTent") end
+        if uiMask_Open then table.insert(activeStates, "uiMask_Open") end
+        if gameIsPaused then table.insert(activeStates, "gamePaused") end
+        if itemBar_Open then table.insert(activeStates, "itemBar_Open") end
+        if chatMenu_Open then table.insert(activeStates, "chatMenu_Open") end
+        if worldMap_Open then table.insert(activeStates, "worldMap_Open") end
+        if localMap_Open then table.insert(activeStates, "localMap_Open") end
+        if questFinishing then table.insert(activeStates, "questFinished") end
+        if startMenu_Open then table.insert(activeStates, "startMenu_Open") end
+        if photoMode_Open then table.insert(activeStates, "photoMode_Open") end
+        if equipList_Open then table.insert(activeStates, "equipList_Open") end
+        if startedDialogue then table.insert(activeStates, "startedDialogue") end
+        if bountyMenu_Open then table.insert(activeStates, "bountyMenu_Open") end
+        if questHasStarted then table.insert(activeStates, "questHasStarted") end
+        if startSubMenu_Open then table.insert(activeStates, "startSubMenu_Open") end
+        if networkErrorActive then table.insert(activeStates, "networkErrorActive") end
+        if voiceChatMenu_Open then table.insert(activeStates, "voiceChatMenu_Open") end
+        if keyboardSettings_Open then table.insert(activeStates, "keyboardSettings_Open") end
+
+        local statePriority = {
+            "networkErrorActive",
+            "questHasStarted",
+            "chatMenu_Open",
+            "startedDialogue",
+            "startSubMenu_Open",
+            "startMenu_Open",
+            "itemBar_Open",
+            "photoMode_Open",
+            "questFinished",
+            "gamePaused",
+            "inCamp",
+            "equipList_Open",
+            "localMap_Open",
+            "worldMap_Open",
+            "bountyMenu_Open",
+            "keyboardSettings_Open",
+            "inTent",
+            "voiceChatMenu_Open",
+        }
+
+        
+        for _, priority in ipairs(statePriority) do
+            for _, state in ipairs(activeStates) do
+                if state == priority then
+                    currentState = priority
+                    break
+                end
+            end
+            if currentState ~= "hideUI" then break end
+        end
+
+        -------------------------
+        -- HUD Visibility Logic
+        -------------------------
+      if not manual_show_override then
+    if currentState == "hideUI" then
+        set_all_guis_visibility(false)
+    else
+        set_all_guis_visibility(true)
+    end
+end
 
 
+    end)
 
+    -----------------------------------
+    --End frame update-----------------------------------
+    -----------------------------------
 
     -- for name, game_obj in pairs(grabbed_guis) do
     --     if itemBar_Open then
@@ -959,15 +1044,7 @@ end
     --         game_obj:call("set_UpdateSelf(System.Boolean)", false)
     --     end
     -- end
-
-end)
-
     
------------------------------------
---End frame update-----------------------------------
------------------------------------
-
-
 -- d2d.register(
 -- function()
 --     font = d2d.Font.new("Tahoma", 30)
