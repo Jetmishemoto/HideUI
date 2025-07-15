@@ -1,0 +1,9 @@
+{
+    "Lua.diagnostics.globals": [
+        "sdk"
+    ],
+    "Lua.diagnostics.disable": [
+        "undefined-global",
+        "undefined-field"
+    ]
+}

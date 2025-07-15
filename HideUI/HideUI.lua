@@ -427,8 +427,12 @@ end)
 ---
 
 
+------------------------------------------------------
+-----------------HideUI Utility 
+------------------------------------------------------
+
 ---@param game_obj userdata  -- REManagedObject via.GameObject
----@param state boolean      -- true = show, false = hide
+---@param state boolean      
 local function set_gui_visibility(game_obj, state)
     if not game_obj then
         print("[HideUI] set_gui_visibility: game_obj is nil")
@@ -443,16 +447,9 @@ local function set_gui_visibility(game_obj, state)
     end
 end
 
+------------------------------------------------------
 
-
-
-
-
-
-
-
-
----@param gui_types_table table<string, string>
+---@param gui_types_table table<string, string>  -- { name = "app.GUIxxxxxx", ... }
 ---@return table<string, userdata>  -- grabbed_guis
 local function grab_all_guis_and_hide(gui_types_table)
     local grabbed_guis = {}
@@ -460,7 +457,6 @@ local function grab_all_guis_and_hide(gui_types_table)
     for name, type_string in pairs(gui_types_table) do
         local game_obj = grab_gui_gameobject(type_string)
         if game_obj then
-            -- Hide immediately
             set_gui_visibility(game_obj, false)
             grabbed_guis[name] = game_obj
             print("[HideUI] Grabbed and hid:", name)
@@ -471,10 +467,10 @@ local function grab_all_guis_and_hide(gui_types_table)
 
     return grabbed_guis
 end
-
-
-
----@param gui_types_table table<string, string>
+--------------------
+------------------------------------------------------
+-----------------
+---@param gui_types_table table<string, string>  -- { name = "app.GUIxxxxxx", ... }
 ---@return table<string, userdata>  -- grabbed_guis
 local function grab_all_guis_and_show(gui_types_table)
     local grabbed_guis = {}
@@ -482,7 +478,6 @@ local function grab_all_guis_and_show(gui_types_table)
     for name, type_string in pairs(gui_types_table) do
         local game_obj = grab_gui_gameobject(type_string)
         if game_obj then
-            -- Hide immediately
             set_gui_visibility(game_obj, true)
             grabbed_guis[name] = game_obj
             print("[HideUI] Grabbed and showing:", name)
@@ -493,6 +488,30 @@ local function grab_all_guis_and_show(gui_types_table)
 
     return grabbed_guis
 end
+
+
+---@param gui_type_string string   -- e.g., gui_types.Map
+---@param state boolean            -- true = show, false = hide
+local function grab_and_set_gui_visibility(gui_type_string, state)
+    local game_obj = grab_gui_gameobject(gui_type_string)
+    if not game_obj then
+        print("[HideUI] -> Cannot set visibility, GameObject not found for:", gui_type_string)
+        return
+    end
+
+    local draw_success = game_obj:call("set_DrawSelf(System.Boolean)", state)
+    local update_success = game_obj:call("set_UpdateSelf(System.Boolean)", state)
+
+    if not draw_success or not update_success then
+        print("[HideUI] -> Failed to set DrawSelf or UpdateSelf for:", gui_type_string)
+    else
+        print("[HideUI] -> Visibility for", gui_type_string, "set to", state and "VISIBLE" or "HIDDEN")
+    end
+end
+
+
+
+------------------------------------------------------
 
 
 
@@ -646,7 +665,7 @@ local hook_definitions = {
     ------------------------
     -- Open LocalMap---------------------------------------------------------
         { "app.cGUIMapController", "requestOpen", function()
-
+            grab_and_set_gui_visibility(gui_types.Map, true)
             mapTransitioning = true
             mapTransitioningFrames = 60
 
@@ -662,7 +681,7 @@ local hook_definitions = {
         end },
     -- Closed LocalMap------------------------------
         { "app.GUIManager", "close3DMap", function()
-            
+            grab_and_set_gui_visibility(gui_types.Map, false)
             if mapTransitioning and virtualMouseMenu_Open then
                 --print("Skipping map close — mapTransitioning still active")
                 localMapCloseQueued = true
@@ -828,7 +847,7 @@ local function printAllUIStates()
     print("worldMap_Open:           ", worldMap_Open)
     print("localMapFromWorldMap:    ", localMapFromWorldMap)
     print("gameIsPaused:            ", gameIsPaused)
-    print("player_Ready:            ", player_Ready)
+    --print("player_Ready:            ", player_Ready)
     print("itemBar_Open:            ", itemBar_Open)
     print("inTent:                  ", inTent)
     print("voiceChatMenu_Open:      ", voiceChatMenu_Open)
@@ -868,7 +887,7 @@ re.on_frame(function()
     update_timers()
 
     if player_Ready then
-        printAllUIStates()
+        --printAllUIStates()
     end
 
     --Wait until player is ready----------------
