@@ -867,9 +867,9 @@ re.on_frame(function()
     end
     update_timers()
 
-    -- if player_Ready then
-    --     printAllUIStates()
-    -- end
+    if player_Ready then
+        printAllUIStates()
+    end
 
     --Wait until player is ready----------------
     if not player_Ready then
