@@ -1,5 +1,6 @@
 
 local initialized = false
+local lastState = nil
 local forceShowHUD = false
 local uiMask_Open = false
 local lastCanOpenPreparingWindow = false
@@ -631,7 +632,13 @@ end
 
 
 
-
+-- Helper: Check camp status
+local function checkCampStatus()
+    local gui_manager = sdk.get_managed_singleton("app.GUIManager")
+    if not gui_manager then return end
+    local in_life_area = gui_manager:call("requestLifeArea")
+    inCamp = in_life_area
+end
 
 
 
@@ -669,7 +676,87 @@ local function printAllUIStates()
 end
 
 
+-- =========================================================
+-- COMPONENT RETRIEVAL (Fixed Native Call)
+-- =========================================================
+local function get_component_from_scene(type_string)
+    -- 1. Get Scene Manager
+    local scene_manager = sdk.get_native_singleton("via.SceneManager")
+    if not scene_manager then return nil end
 
+    local scene_manager_type = sdk.find_type_definition("via.SceneManager")
+    if not scene_manager_type then return nil end
+
+    -- 2. Get Current Scene (Using your EXACT working syntax)
+    -- Wrapped in pcall to prevent "Invoke threw an exception" from crashing the script
+    local ok, scene = pcall(sdk.call_native_func, scene_manager, scene_manager_type, "get_CurrentScene()")
+    
+    if not ok or not scene then 
+        -- Fallback: try without parens just in case
+        ok, scene = pcall(sdk.call_native_func, scene_manager, scene_manager_type, "get_CurrentScene")
+        if not ok or not scene then return nil end
+    end
+
+    -- 3. Find Components
+    local type_def = sdk.typeof(type_string)
+    if not type_def then return nil end
+
+    local array = scene:call("findComponents(System.Type)", type_def)
+    if not array then return nil end
+    
+    local count = array:call("get_Length")
+    if count == 0 then return nil end
+    
+    return array:call("get_Item", 0)
+end
+
+-- =========================================================
+-- VISIBILITY LOGIC
+-- =========================================================
+local function setComponentVisibility(type_string, visible)
+    -- 1. Find the Logic Component
+    local logic_comp = get_component_from_scene(type_string)
+    if not logic_comp then return end
+
+    -- 2. Get ID
+    local id = logic_comp:call("get_ID")
+    if not id then return end
+
+    -- 3. Get HUD Manager
+    local hud_manager = sdk.get_managed_singleton("app.GUIHudManager")
+    if not hud_manager then return end
+
+    -- 4. Find Display Control
+    local disp_ctrl = hud_manager:call("findDisplayControl(System.Guid)", id)
+    
+    if disp_ctrl then
+        -- 5. Get Real Control
+        local real_control = disp_ctrl:get_field("_TargetControl")
+        if not real_control then real_control = disp_ctrl:get_field("Control") end
+        if not real_control then real_control = disp_ctrl:get_field("RefControl") end
+
+        if real_control then
+            -- 6. Apply Visibility
+            real_control:call("set_ForceInvisible(System.Boolean)", not visible)
+        end
+    end
+end
+
+-- List of specific HUD elements to hide
+-- We do NOT hide the root, so damage numbers stay visible.
+local function applyCustomVisibility(visible)
+    local targets = {
+        "get_GUI020003", -- Player HP
+        "get_GUI020004", -- Player Stamina
+        "get_GUI020006", -- Item Bar
+        "get_GUI060011", -- Mini Map / Radar
+        "get_GUI020016"  -- Player Names (Optional)
+    }
+    
+    for _, method_name in ipairs(targets) do
+        setComponentVisibility(method_name, visible)
+    end
+end
 ---------------------------------------
 ------------------------
 -- Main frame update-------------------------------
@@ -681,6 +768,9 @@ re.on_frame(function()
         initialized = true
         print("HideUI initialized",initialized)
     end
+
+    checkCampStatus()
+
 
     -- Initialize timers 
     if not timers then
@@ -867,61 +957,50 @@ end
 
         _G.HideUI_currentState = currentState
 
+
+        -- Define Actions: We map everything to either SHOW(true) or HIDE(false)
+    local function show() applyCustomVisibility(true) end
+    local function hide() applyCustomVisibility(false) end
+
+
     local playerGUIActions = {
-        inCamp = function()
-        end,
-        inTent = function()
-        end,
-        gamePaused = function()
-        end,
-        uiMask_Open = function()
-        end,
-        itemBar_Open = function()
-        end,
-        questUI_Timer = function()
-        end,
-        questFinished = function()
-        end,
-        localMap_Open = function()
-        end,
-        worldMap_Open = function()
-        end,
-        chatMenu_Open = function()
-        end,
-        equipList_Open = function()
-        end,
-        startMenu_Open = function()
-        end,
-        photoMode_Open = function ()
-        end,
-        startedDialogue = function()
-        end,
-        questHasStarted = function ()
-        end,
-        startSubMenu_Open = function()
-        end,
-        VoiceChatMenu_Open = function()
-        end,
-        networkErrorActive = function()
-        end,
-        virtualMouseMenuOpen = function()
-        end,
-        keyboardSettings_Open = function()
-        end,
+        inCamp          = show,
+        inTent          = show,
+        gamePaused      = show,
+        uiMask_Open     = show,
+        itemBar_Open    = show,
+        questUI_Timer   = show,
+        questFinished   = show,
+        localMap_Open   = show,
+        worldMap_Open   = show,
+        chatMenu_Open   = show,
+        equipList_Open  = show,
+        startMenu_Open  = show,
+        photoMode_Open  = show,
+        startedDialogue = show,
+        questHasStarted = show,
+        startSubMenu_Open    = show,
+        VoiceChatMenu_Open   = show,
+        networkErrorActive   = show,
+        virtualMouseMenuOpen = show,
+        keyboardSettings_Open = show,
+        
+        hideUI = hide
+    }
 
-        hideUI = function()
-            local gui_manager = get_gui_manager()
-            if not gui_manager then return end
-            local set_HideUI = get_type_definition("app.GUIManager"):get_method("allGUIForceInvisible")
-            if set_HideUI then
-                    set_HideUI:call(gui_manager)
-            end
-        end }
+    -- 1. Handle State Changes
+    if currentState ~= lastState then
+        print("UI State Change: " .. tostring(lastState) .. " -> " .. currentState)
+        local action = playerGUIActions[currentState]
+        if action then action() else show() end
+        lastState = currentState
+    end
 
-    -- Run the actions for the current state
-        local runPlayerActions = playerGUIActions[currentState]
-        --print("Current UI State:", currentState)
-        if runPlayerActions then runPlayerActions() end
+    -- 2. Persistent Enforcement (The "Sticky" Fix)
+    -- We must re-apply the HIDE command every frame to fight the engine
+    if currentState == "hideUI" then
+        hide()
+    end
     end)
 -----------------------------------
 --End frame update-----------------------------------
