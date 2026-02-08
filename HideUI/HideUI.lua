@@ -4,6 +4,14 @@ local inCamp = false
 local itemBar_Open = false
 local worldMap_Open = false
 local localMap_Open = false
+local MapCloseQueued = false
+local mapTransitioning = false
+local mapTransitioningFrames = 0
+local mapTransitionDelayFrames = 30 -- Adjust this value based on the average duration of the map transition in frames (e.g., 30 frames for ~0.5 seconds at 60fps)
+local localMapFromWorldMap = false
+local worldMapFromLocalMap = false
+local localMapCloseQueued = false
+
 local pauseMenu_Open = false
 local isHealthLow = false
 local questHasStarted = false
@@ -210,6 +218,41 @@ local function updateHealthStatus()
 end
 
 
+--------
+---Map Transition Logic Methods--------------------------
+--------------
+local function finishMapTransition()
+    mapTransitioning = false
+    localMapFromWorldMap = false
+    --print("Map transition complete — unblocking")
+end
+
+local function clearLingeringVirtualMouse()
+    if not mapTransitioning and virtualMouseMenu_Open and not localMap_Open and not worldMap_Open then
+        virtualMouseMenu_Open = false
+        ---print("Cleared lingering virtualMouseMenu_Open flag")
+    end
+end
+
+local function resolveConflictingMapStates()
+    if localMap_Open and worldMap_Open  then
+        --print("Both Local and World Map are marked open! Resetting...")
+        -- World map transitioned to local map, so clear world map flag
+        worldMap_Open = false
+    end
+end
+
+local function finalizeQueuedMapClose()
+    if localMapCloseQueued then
+        localMap_Open = false
+        virtualMouseMenu_Open = false
+        localMapCloseQueued = false
+        --print("Closing map after transition delay (queued)")
+    end
+end
+
+
+
 -- =========================================================
 -- HOOK SYSTEM 
 -- =========================================================
@@ -301,32 +344,67 @@ end)
 --World Map 
 hook_method("app.GUI060102", "onOpen", function()
     worldMap_Open = true
+        localMapFromWorldMap = true -- flag we're transitioning from world map
+        mapTransitioning = true
+        mapTransitioningFrames = 60
     print("HideUI: World Map Opened")
 end)
 
 hook_method("app.GUIManager", "isOpenReadyGUI060102", function()
     worldMap_Open = false
+    if mapTransitioning then
+        --print("World Map closed early — forcibly ending map transition")
+        mapTransitioning = false
+        localMapFromWorldMap = false
+        mapTransitioningFrames = 0
+    end
 end)
 --------------------------
 
 ----------
 -- Local Map
 ------- 
+-- hook_method("app.GUI060000", "onOpen", function()
+--     localMap_Open = true
+--     print("HideUI: Local Map Opened")
+-- end)
+
+
+
+-- called when opening local map from world map, and also when opening local map directly (like from camp or quest start) 
+--app.cGUIMapFlowActive.enter
+
+hook_method("app.cGUIMapFlowActive", "enter", function()
+    mapTransitioning = true
+    localMap_Open = true
+    mapTransitioningFrames = 60
+    print("HideUI: Local Map Flow Active - Map Transition Started")
+end)
+
 hook_method("app.cGUIMapController", "requestOpen", function()
     localMap_Open = true
+    mapTransitioning = true
+    mapTransitioningFrames = 60
     print("HideUI: Local Map Opened")
 end)
 
 
 hook_method("app.cGUI060000Recommend", "onClose", function()
+    if mapTransitioning and virtualMouseMenu_Open then
+        --print("Skipping map close — mapTransitioning still active")
+        localMapCloseQueued = true
+        return
+    end
+
+        mapTransitioning = false
     localMap_Open = false
     print("HideUI: Local Map Closed via Recommend Close")
 end)
 
-hook_method("app.GUIManager", "close3DMap", function()
-    localMap_Open = false
-    print("HideUI: Local Map Closed via Manager")
-end)
+-- hook_method("app.GUIManager", "close3DMap", function()
+--     localMap_Open = false
+--     print("HideUI: Local Map Closed via Manager")
+-- end)
 
 
 
@@ -344,11 +422,17 @@ end)
 
 ------------------
 
+local function PrintStates()
+    print(string.format("Camp:%s|Item:%s|WMap:%s|LMap:%s|Pause:%s|Sub:%s|HP:%s|Qst:%s|Chat:%s",
+        tostring(inCamp), tostring(itemBar_Open), tostring(worldMap_Open), tostring(localMap_Open),
+        tostring(pauseMenu_Open), tostring(startSubMenu_Open), tostring(isHealthLow),
+        tostring(questHasStarted), tostring(chatMenu_Open)))
+    
+end
 
 
-
--- =========================================================
--- 5. MAIN LOOP
+-- ======================
+-- MAIN LOOP-------------------------
 -- =========================================================
 re.on_frame(function()
 
@@ -359,13 +443,34 @@ re.on_frame(function()
         print("HideUI initialized",initialized)
     end
 
-    print("HideUI Status - Camp:", inCamp, "QuestStarted:", questHasStarted)
-
-
+    -- Initialize timers 
+    if not timers then
+        timers = {}
+    end
     update_timers()
     updateHealthStatus()
 
+    --------------
+    ---3D Map Transition Logic----------------
+    -------------
+        if mapTransitioning then
+            mapTransitioningFrames = mapTransitioningFrames - 1
+            if mapTransitioningFrames <= 0 then
+                finishMapTransition()
+                print("Map transition complete — unblocking")
+            end
+        end
 
+        -- Clear any leftover virtual mouse state
+        clearLingeringVirtualMouse()
+        -- only one map type should be open
+        resolveConflictingMapStates()
+        -- Handle any queued map close
+        finalizeQueuedMapClose()
+    -----------------------------
+    ---
+    ---
+    ---
 
     -- 1. Cache Objects (Find them if we haven't yet)
     if not map_GO then map_GO = grab_gui_gameobject("app.GUI060011") end
@@ -385,13 +490,9 @@ re.on_frame(function()
     if not slingerInfo_GO then slingerInfo_GO = grab_gui_gameobject("app.GUI020017") end
     if not partyMemberList_GO then partyMemberList_GO = grab_gui_gameobject("app.GUI020011") end
 
-    print(string.format("Camp:%s|Item:%s|WMap:%s|LMap:%s|Pause:%s|Sub:%s|HP:%s|Qst:%s|Chat:%s",
-        tostring(inCamp), tostring(itemBar_Open), tostring(worldMap_Open), tostring(localMap_Open),
-        tostring(pauseMenu_Open), tostring(startSubMenu_Open), tostring(isHealthLow),
-        tostring(questHasStarted), tostring(chatMenu_Open)))
+    -- State Debug
+    --PrintStates()
 
-    -- 2. Determine Visibility based on the variable set by our Hooks
-    -- We want to show the UI if we are in camp, OR if the item bar is open, OR if the world map is open
     local show_ui = inCamp
                 or itemBar_Open
                 or worldMap_Open
@@ -401,6 +502,7 @@ re.on_frame(function()
                 or isHealthLow
                 or questHasStarted
                 or chatMenu_Open
+                or mapTransitioning
 
     local should_hide_ui = not show_ui
 
