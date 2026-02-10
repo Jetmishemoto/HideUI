@@ -7,7 +7,7 @@ local localMap_Open = false
 local MapCloseQueued = false
 local mapTransitioning = false
 local mapTransitioningFrames = 0
-local mapTransitionDelayFrames = 30 -- Adjust this value based on the average duration of the map transition in frames (e.g., 30 frames for ~0.5 seconds at 60fps)
+local mapTransitionDelayFrames = 60 -- Adjust this value based on the average duration of the map transition in frames (e.g., 30 frames for ~0.5 seconds at 60fps)
 local localMapFromWorldMap = false
 local worldMapFromLocalMap = false
 local localMapCloseQueued = false
@@ -55,7 +55,7 @@ local partyMemberList_GO = nil -- app.GUI020011
 -- =========================================================
 -- TIMER SYSTEM
 -- =========================================================
-local function update_timers()
+local function update_Timers()
     for name, timer in pairs(timers) do
         if timer.value > 0 then
             timer.value = timer.value - 1
@@ -67,7 +67,7 @@ local function update_timers()
     end
 end
 
-local function start_timer(name, duration, callback)
+local function start_Timer(name, duration, callback)
     timers[name] = { 
         value = duration, 
         on_complete = callback 
@@ -77,7 +77,7 @@ end
 -- =========================================================
 -- GRAB GAMEOBJECTS
 -- =========================================================
-local function grab_gui_gameobject(gui_type_string)
+local function grab_Gui_GameObject(gui_type_string)
     local scene_manager = sdk.get_native_singleton("via.SceneManager")
     local scene_manager_type = sdk.find_type_definition("via.SceneManager")
     
@@ -145,10 +145,12 @@ end
 -- =========================================================
 local function hide_GUI_Hard(game_obj, should_hide)
     if not game_obj then return end
+    local control = game_obj:call("getComponent(System.Type)", sdk.typeof("via.gui.Control"))
 
     -- logic_state: if should_hide is true, we want logic OFF (false)
     local logic_state = not should_hide
 
+    --control:call("set_ForceInvisible(System.Boolean)", logic_state)
     game_obj:call("set_UpdateSelf(System.Boolean)", logic_state)
     game_obj:call("set_DrawSelf(System.Boolean)", logic_state)
 end
@@ -173,8 +175,6 @@ local function checkIfInCampStartup()
         print("HideUI: Startup - Not In Camp")
     end
 end
-
-
 
 
 
@@ -208,8 +208,8 @@ local function updateHealthStatus()
 
     if current and max and max > 0 then
         local ratio = current / max
-        -- IF health is below 51%, SHOW the HUD
-        if ratio < 0.50 then
+        -- IF health is below 75%, show health UI regardless of other states
+        if ratio < 0.75 then
             isHealthLow = true
         else
             isHealthLow = false
@@ -273,7 +273,7 @@ hook_method("app.cQuestStart", "enter", function()
     -- Force re-initialization to catch the camp status change
     --initialized = false
 
-    start_timer("questUI", QUEST_START_UI_TIMEOUT, function()
+    start_Timer("questUI", QUEST_START_UI_TIMEOUT, function()
         questHasStarted = false
         inCamp = false -- Force hide after quest start timeout, as we assume player has left camp by then
         keyboardSettings_Open = false
@@ -293,24 +293,23 @@ hook_method("app.GUIManager", "instantiatePrefab", function()
     print("HideUI: SubMenu Event Triggered")
     
     -- Start/Restart the timer
-    start_timer("startSubMenu", START_SUB_MENU_TIMEOUT, function()
+    start_Timer("startSubMenu", START_SUB_MENU_TIMEOUT, function()
         startSubMenu_Open = false
         print("HideUI: SubMenu Timer Ended")
     end)
 end)
 
--- Hook: Leaving Camp 
+-- Leaving Camp 
 hook_method("app.GUIManager", "requestStage", function()
     inCamp = false
     print("Event: Left camp / Stage Request")
 end)
 
--- Hook: Entering/In Camp (Life Area check)
+-- Entering/In Camp (Life Area check)
 hook_method("app.GUIManager", "requestLifeArea", function(retval)
-    -- If the game is checking LifeArea, we assume we are entering/in camp logic
-    -- We can also check the return value if this was a PostHook, but PreHook is fine for intent
+
     inCamp = true
-    print("Event: In Camp") -- Commented out to avoid spam
+    print("Event: In Camp") 
 end)
 
 
@@ -338,6 +337,8 @@ hook_method("app.GUI030000", "onClose",function()
     print("HideUI: Pause Menu Closed")
 end)
 
+
+
 --------------
 ---
 --------------
@@ -359,7 +360,17 @@ hook_method("app.GUIManager", "isOpenReadyGUI060102", function()
         mapTransitioningFrames = 0
     end
 end)
+
+---------------------------
+-- Map transition start hook
 --------------------------
+---
+hook_method("app.cGUIMapFlowActive", "enter", function()
+    mapTransitioning = true
+    localMap_Open = true
+    mapTransitioningFrames = 60
+    print("HideUI: Local Map Flow Active - Map Transition Started")
+end)
 
 ----------
 -- Local Map
@@ -374,12 +385,6 @@ end)
 -- called when opening local map from world map, and also when opening local map directly (like from camp or quest start) 
 --app.cGUIMapFlowActive.enter
 
-hook_method("app.cGUIMapFlowActive", "enter", function()
-    mapTransitioning = true
-    localMap_Open = true
-    mapTransitioningFrames = 60
-    print("HideUI: Local Map Flow Active - Map Transition Started")
-end)
 
 hook_method("app.cGUIMapController", "requestOpen", function()
     localMap_Open = true
@@ -436,7 +441,7 @@ end
 -- =========================================================
 re.on_frame(function()
 
-    -- Optional: Run the check periodically just to be safe (self-correcting)
+    -- 
     if not initialized then
         checkIfInCampStartup()
         initialized = true
@@ -447,7 +452,7 @@ re.on_frame(function()
     if not timers then
         timers = {}
     end
-    update_timers()
+    update_Timers()
     updateHealthStatus()
 
     --------------
@@ -468,63 +473,73 @@ re.on_frame(function()
         -- Handle any queued map close
         finalizeQueuedMapClose()
     -----------------------------
-    ---
-    ---
-    ---
 
-    -- 1. Cache Objects (Find them if we haven't yet)
-    if not map_GO then map_GO = grab_gui_gameobject("app.GUI060011") end
-    if not guiBG_GO then guiBG_GO = grab_gui_gameobject("app.GUI060001") end
-    if not hpBar_GO then hpBar_GO = grab_gui_gameobject("app.GUI020003") end
-    if not mapRing_GO then mapRing_GO = grab_gui_gameobject("app.GUI060010") end
-    if not itemBar_GO then itemBar_GO = grab_gui_gameobject("app.GUI020006") end
-    if not guiFront_GO then guiFront_GO = grab_gui_gameobject("app.GUI060000") end
-    if not itemList_GO then itemList_GO = grab_gui_gameobject("app.GUI020200") end
-    if not mapIcons_GO then mapIcons_GO = grab_gui_gameobject("app.GUI060002") end
-    if not sharpness_GO then sharpness_GO = grab_gui_gameobject("app.GUI020015") end
-    if not questList_GO then questList_GO = grab_gui_gameobject("app.GUI020018") end
-    if not mapIcons2_GO then mapIcons2_GO = grab_gui_gameobject("app.GUI060008") end
-    if not mapGround_GO then mapGround_GO = grab_gui_gameobject("app.GUI060008") end
-    if not staminaBar_GO then staminaBar_GO = grab_gui_gameobject("app.GUI020004") end
-    if not playerNames_GO then playerNames_GO = grab_gui_gameobject("app.GUI020016") end
-    if not slingerInfo_GO then slingerInfo_GO = grab_gui_gameobject("app.GUI020017") end
-    if not partyMemberList_GO then partyMemberList_GO = grab_gui_gameobject("app.GUI020011") end
+
+
+
+
+
+
+    -- Cache Objects 
+    if not map_GO then map_GO = grab_Gui_GameObject("app.GUI060011") end
+    if not guiBG_GO then guiBG_GO = grab_Gui_GameObject("app.GUI060001") end
+    if not hpBar_GO then hpBar_GO = grab_Gui_GameObject("app.GUI020003") end
+    if not mapRing_GO then mapRing_GO = grab_Gui_GameObject("app.GUI060010") end
+    if not itemBar_GO then itemBar_GO = grab_Gui_GameObject("app.GUI020006") end
+    if not guiFront_GO then guiFront_GO = grab_Gui_GameObject("app.GUI060000") end
+    if not itemList_GO then itemList_GO = grab_Gui_GameObject("app.GUI020200") end
+    if not mapIcons_GO then mapIcons_GO = grab_Gui_GameObject("app.GUI060002") end
+    if not sharpness_GO then sharpness_GO = grab_Gui_GameObject("app.GUI020015") end
+    if not questList_GO then questList_GO = grab_Gui_GameObject("app.GUI020018") end
+    if not mapIcons2_GO then mapIcons2_GO = grab_Gui_GameObject("app.GUI060008") end
+    if not mapGround_GO then mapGround_GO = grab_Gui_GameObject("app.GUI060008") end
+    if not staminaBar_GO then staminaBar_GO = grab_Gui_GameObject("app.GUI020004") end
+    if not playerNames_GO then playerNames_GO = grab_Gui_GameObject("app.GUI020016") end
+    if not slingerInfo_GO then slingerInfo_GO = grab_Gui_GameObject("app.GUI020017") end
+    if not partyMemberList_GO then partyMemberList_GO = grab_Gui_GameObject("app.GUI020011") end
 
     -- State Debug
     --PrintStates()
 
-    local show_ui = inCamp
-                or itemBar_Open
-                or worldMap_Open
-                or localMap_Open
-                or pauseMenu_Open
-                or startSubMenu_Open
-                or isHealthLow
-                or questHasStarted
-                or chatMenu_Open
-                or mapTransitioning
+    local show_general_ui = inCamp
+    or itemBar_Open
+    or chatMenu_Open
+    or localMap_Open
+    or worldMap_Open
+    or pauseMenu_Open
+    or questHasStarted
+    or mapTransitioning
+    or startSubMenu_Open
 
-    local should_hide_ui = not show_ui
 
-    -- Apply Visibility
-    hide_GUI_Hard(mapRing_GO, should_hide_ui)
-    hide_GUI_Hard(mapGround_GO, should_hide_ui)
+    local show_health_ui = show_general_ui or isHealthLow
+    local hide_general = not show_general_ui
+    local hide_health  = not show_health_ui
 
-    hide_GUI(mapGround_GO, should_hide_ui)
-    hide_GUI(itemBar_GO, should_hide_ui)
-    hide_GUI(hpBar_GO, should_hide_ui)
-    hide_GUI(staminaBar_GO, should_hide_ui)
-    hide_GUI(map_GO, should_hide_ui)
-    hide_GUI(mapRing_GO, should_hide_ui)
-    hide_GUI(playerNames_GO, should_hide_ui)
-    hide_GUI(sharpness_GO, should_hide_ui)
-    hide_GUI(questList_GO, should_hide_ui)
-    hide_GUI(mapIcons_GO, should_hide_ui)
-    hide_GUI(guiBG_GO, should_hide_ui)
-    hide_GUI(guiFront_GO, should_hide_ui)
-    hide_GUI(itemList_GO, should_hide_ui)
-    hide_GUI(slingerInfo_GO, should_hide_ui)
-    hide_GUI(partyMemberList_GO, should_hide_ui)
+    --Hide HP Bar with its own logic check, since we want it to show if health is low even if other UI is hidden
+    hide_GUI(hpBar_GO, hide_health)
+
+    -- Hide UI and stop updates for elements that refuse to hide properly with just set_DrawSelf
+    hide_GUI_Hard(mapRing_GO, hide_general)
+    hide_GUI_Hard(mapGround_GO, hide_general)
+    hide_GUI_Hard(mapIcons_GO, hide_general)
+    hide_GUI_Hard(questList_GO, hide_general)
+
+    -- HideUI for elements that respond to set_DrawSelf or ForceInvisible
+    hide_GUI(mapGround_GO, hide_general)
+    hide_GUI(itemBar_GO, hide_general)
+    hide_GUI(staminaBar_GO, hide_general)
+    hide_GUI(mapRing_GO, hide_general)
+    hide_GUI(playerNames_GO, hide_general)
+    hide_GUI(sharpness_GO, hide_general)
+    hide_GUI(guiBG_GO, hide_general)
+    hide_GUI(guiFront_GO, hide_general)
+    hide_GUI(itemList_GO, hide_general)
+    hide_GUI(slingerInfo_GO, hide_general)
+    hide_GUI(partyMemberList_GO, hide_general)
+    --hide_GUI(map_GO, should_hide_ui)
+    --hide_GUI(questList_GO, should_hide_ui)
+    --hide_GUI(mapIcons_GO, should_hide_ui)
 
 
 end)
