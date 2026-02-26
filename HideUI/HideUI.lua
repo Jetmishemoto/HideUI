@@ -1,3 +1,6 @@
+
+local _VERSION = "2.0.0"
+
 local initialized = false
 
 local inCamp = false
@@ -13,7 +16,9 @@ local worldMapFromLocalMap = false
 local localMapCloseQueued = false
 
 local pauseMenu_Open = false
+local isSharpnessLow = false
 local isHealthLow = false
+local isStaminaLow = false
 local questHasStarted = false
 local chatMenu_Open = false
 local startSubMenu_Open = false
@@ -123,6 +128,23 @@ local function get_singleton_call(type_name, method_name)
 end
 
 
+--app.GUIBaseApp.set_HideHud(System.Boolean)
+--app.GUIBaseApp.get_HideHud()
+
+
+local function  SetHideHUD()
+    local guiBaseApp = get_singleton("app.GUIBaseApp")
+    if not guiBaseApp then return end
+
+    local setHideHudMethod = sdk.find_type_definition("app.GUIBaseApp"):get_method("set_HideHud(System.Boolean)")
+    if not setHideHudMethod then
+        print("[HideUI] Warning: Could not find method set_HideHud in app.GUIBaseApp")
+        return
+    end
+
+    -- Example usage: Hide the HUD
+    setHideHudMethod:call(guiBaseApp, true)
+end
 
 -- =========================================================
 -- HIDE VISUALS ONLY
@@ -131,27 +153,27 @@ local function hide_GUI(game_obj, should_hide)
     if not game_obj then return end
 
     local control = game_obj:call("getComponent(System.Type)", sdk.typeof("via.gui.Control"))
-    
+
     if control then
-        -- Magic Switch: Hide pixels, keep logic
         control:call("set_ForceInvisible(System.Boolean)", should_hide)
     else
         game_obj:call("set_DrawSelf(System.Boolean)", not should_hide)
     end
 end
 
+--isUpdateInternal
 -- =========================================================
 -- Use this for elements like MapRing that refuse to hide
 -- =========================================================
 local function hide_GUI_Hard(game_obj, should_hide)
     if not game_obj then return end
     local control = game_obj:call("getComponent(System.Type)", sdk.typeof("via.gui.Control"))
-
     -- logic_state: if should_hide is true, we want logic OFF (false)
     local logic_state = not should_hide
 
-    --control:call("set_ForceInvisible(System.Boolean)", logic_state)
+
     game_obj:call("set_UpdateSelf(System.Boolean)", logic_state)
+    game_obj:call("set_ForceInvisible(System.Boolean)", logic_state)
     game_obj:call("set_DrawSelf(System.Boolean)", logic_state)
 end
 
@@ -218,6 +240,85 @@ local function updateHealthStatus()
 end
 
 
+
+
+-- =========================================================
+-- STAMINA CHECK LOGIC
+-- =========================================================
+local function updatesStaminaStatus()
+
+--app.cHunterStamina
+    local pm = sdk.get_managed_singleton("app.PlayerManager")
+    if not pm then return end
+
+    local player = pm:call("getMasterPlayer")
+    if not player then return end
+
+    local character = player:call("get_Character")
+    if not character then return end
+
+    local status = character:call("get_HunterStatus")
+    if not status then return end
+
+    -- Access Stamina Component
+    local stamina_comp = status:get_field("_Stamina")
+    if not stamina_comp then return end
+
+
+    local current = stamina_comp:call("get_Stamina")
+    local max = stamina_comp:call("get_MaxStamina")
+
+    if current and max and max > 0 then
+        local ratio = current / max
+        -- IF stamina is below 40%, show stamina UI regardless of other states
+        if ratio < 0.40 then
+            isStaminaLow = true
+        else
+            isStaminaLow = false
+        end
+    end
+end
+
+-- =========================================================
+-- SHARPNESS CHECK LOGIC
+-- =========================================================
+local function updateSharpnessStatus()
+    local pm = sdk.get_managed_singleton("app.PlayerManager")
+    if not pm then return end
+
+    local player = pm:call("getMasterPlayer")
+    if not player then return end
+
+    local character = player:call("get_Character")
+    if not character then return end
+
+    -- Access Weapon Component
+    local weapon_comp = character:call("get_Weapon")
+    if not weapon_comp then return end
+
+    -- Get Sharpness Component
+    local sharpness_comp = weapon_comp:call("get_Sharpness")
+    if not sharpness_comp then 
+        isSharpnessLow = false -- Weapons like Bow/Guns don't have sharpness
+        return 
+    end
+
+    local current = sharpness_comp:call("get_SharpnessVal")
+    local max = sharpness_comp:call("get_MaxSharpnessVal")
+
+    if current and max and max > 0 then
+        local ratio = current / max
+        -- IF sharpness is below 80%, SHOW the HUD element
+        if ratio < 0.80 then
+            isSharpnessLow = true
+        else
+            isSharpnessLow = false
+        end
+    end
+end
+
+
+
 --------
 ---Map Transition Logic Methods--------------------------
 --------------
@@ -253,9 +354,9 @@ end
 
 
 
--- =========================================================
+-- ========
 -- HOOK SYSTEM 
--- =========================================================
+-- =========================
 local function hook_method(type_str, method_str, callback)
     local t = sdk.find_type_definition(type_str)
     if not t then return end
@@ -435,10 +536,10 @@ local function PrintStates()
     
 end
 
+-- re.on_script_reset(function()
 
--- ======================
 -- MAIN LOOP-------------------------
--- =========================================================
+---------------------------------------------------------
 re.on_frame(function()
 
     -- 
@@ -452,8 +553,14 @@ re.on_frame(function()
     if not timers then
         timers = {}
     end
+
+
     update_Timers()
     updateHealthStatus()
+    updatesStaminaStatus()
+    updateSharpnessStatus()
+
+
 
     --------------
     ---3D Map Transition Logic----------------
@@ -510,36 +617,42 @@ re.on_frame(function()
     or questHasStarted
     or mapTransitioning
     or startSubMenu_Open
+    
 
 
     local show_health_ui = show_general_ui or isHealthLow
-    local hide_general = not show_general_ui
+    local show_stamina_ui = show_general_ui or isStaminaLow
+    local show_sharpness_ui = show_general_ui or isSharpnessLow
+
     local hide_health  = not show_health_ui
+    local hide_stamina = not show_stamina_ui
+    local hide_sharpness = not show_sharpness_ui
+
+    local hide_general = not show_general_ui
 
     --Hide HP Bar with its own logic check, since we want it to show if health is low even if other UI is hidden
     hide_GUI(hpBar_GO, hide_health)
+    hide_GUI(sharpness_GO, hide_sharpness)
+    hide_GUI(staminaBar_GO, hide_stamina)
+    
+    --SetHideHUD()
 
     -- Hide UI and stop updates for elements that refuse to hide properly with just set_DrawSelf
     hide_GUI_Hard(mapRing_GO, hide_general)
     hide_GUI_Hard(mapGround_GO, hide_general)
     hide_GUI_Hard(mapIcons_GO, hide_general)
     hide_GUI_Hard(questList_GO, hide_general)
+    hide_GUI_Hard(itemList_GO, hide_general)
 
+    
     -- HideUI for elements that respond to set_DrawSelf or ForceInvisible
-    hide_GUI(mapGround_GO, hide_general)
+    hide_GUI(itemList_GO, hide_general)
     hide_GUI(itemBar_GO, hide_general)
-    hide_GUI(staminaBar_GO, hide_general)
-    hide_GUI(mapRing_GO, hide_general)
     hide_GUI(playerNames_GO, hide_general)
-    hide_GUI(sharpness_GO, hide_general)
     hide_GUI(guiBG_GO, hide_general)
     hide_GUI(guiFront_GO, hide_general)
-    hide_GUI(itemList_GO, hide_general)
     hide_GUI(slingerInfo_GO, hide_general)
     hide_GUI(partyMemberList_GO, hide_general)
-    --hide_GUI(map_GO, should_hide_ui)
-    --hide_GUI(questList_GO, should_hide_ui)
-    --hide_GUI(mapIcons_GO, should_hide_ui)
 
 
 end)
