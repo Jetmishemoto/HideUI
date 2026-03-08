@@ -1,5 +1,6 @@
 
-local _VERSION = "2.0.0"
+local _VERSION = "3.0.0"
+local json = json
 
 local initialized = false
 
@@ -9,11 +10,11 @@ local worldMap_Open = false
 local localMap_Open = false
 local MapCloseQueued = false
 local mapTransitioning = false
-local mapTransitioningFrames = 0
-local mapTransitionDelayFrames = 60 -- Adjust this value based on the average duration of the map transition in frames (e.g., 30 frames for ~0.5 seconds at 60fps)
-local localMapFromWorldMap = false
-local worldMapFromLocalMap = false
 local localMapCloseQueued = false
+local localMapFromWorldMap = false
+local mapTransitioningFrames = 0
+local worldMapFromLocalMap = false
+local mapTransitionDelayFrames = 60 -- Adjust this value based on the average duration of the map transition in frames (e.g., 30 frames for ~0.5 seconds at 60fps)
 
 local pauseMenu_Open = false
 local isSharpnessLow = false
@@ -54,12 +55,95 @@ local itemList_GO = nil     -- app.GUI020200
 local slingerInfo_GO = nil  -- app.GUI020017
 local partyMemberList_GO = nil -- app.GUI020011
 
+local UI_ELEMENTS = {
+    { key = "hpBar",           id = "app.GUI020003", name = "Health Bar",        hide_type = "soft", logic = "health" },
+    { key = "staminaBar",      id = "app.GUI020004", name = "Stamina Bar",       hide_type = "soft", logic = "stamina" },
+    { key = "sharpness",       id = "app.GUI020015", name = "Sharpness",         hide_type = "soft", logic = "sharpness" },
+    { key = "itemBar",         id = "app.GUI020006", name = "Item Bar",          hide_type = "soft", logic = "general" },
+    { key = "slingerInfo",     id = "app.GUI020017", name = "Slinger Info",      hide_type = "soft", logic = "general" },
+    { key = "playerNames",     id = "app.GUI020016", name = "Player Names",      hide_type = "soft", logic = "general" },
+    { key = "partyMemberList", id = "app.GUI020011", name = "Party Member List", hide_type = "soft", logic = "general" },
+    { key = "guiBG",           id = "app.GUI060001", name = "GUI Background",    hide_type = "soft", logic = "general" },
+    { key = "guiFront",        id = "app.GUI060000", name = "GUI Front",         hide_type = "soft", logic = "general" },
+    
+    -- Hard Hide Elements
+    { key = "mapRing",         id = "app.GUI060010", name = "Map Ring",          hide_type = "hard", logic = "general" },
+    { key = "mapGround",       id = "app.GUI060008", name = "Map Ground",        hide_type = "hard", logic = "general" },
+    { key = "mapIcons",        id = "app.GUI060002", name = "Map Icons",         hide_type = "hard", logic = "general" },
+    { key = "questList",       id = "app.GUI020018", name = "Quest List",        hide_type = "hard", logic = "general" },
+    { key = "itemList",        id = "app.GUI020200", name = "Item List",         hide_type = "hard", logic = "general" }
+}
+
+-- ================================
+-- CONFIGURATION SYSTEM
+-- ===========================
+local config_filename = "HideUI_Config.json" -- Saves directly to reframework/data/
+local config = {
+    health_threshold = 0.75,
+    stamina_threshold = 0.40,
+    sharpness_threshold = 0.80,
+    quest_start_timeout = 280,
+    submenu_timeout = 60,
+    debug_mode = false,
+    ignored_elements = {} -- Stores which UI elements to NEVER hide
+}
+
+-- Populate default ignored elements
+for _, el in ipairs(UI_ELEMENTS) do
+    config.ignored_elements[el.key] = false
+end
+
+local function save_config()
+    json.dump_file(config_filename, config)
+    if config.debug_mode then print("[HideUI] Configuration saved.") end
+end
+
+local function load_config()
+    local loaded_config = json.load_file(config_filename)
+    if type(loaded_config) == "table" then
+        for k, v in pairs(loaded_config) do 
+            if type(v) == "table" and type(config[k]) == "table" then
+                -- Safely merge nested tables (like ignored_elements)
+                for sub_k, sub_v in pairs(v) do config[k][sub_k] = sub_v end
+            else
+                config[k] = v 
+            end
+        end
+    else
+        save_config()
+    end
+end
+
+load_config()
+
+-- ===========================
+-- REFRAMEWORK UI MENU
+-- ===================================
+
+re.on_draw_ui(function()
+
+    if imgui.tree_node("HideUI Settings") then
+        local changed = false
+        
+        if imgui.button("Save Configuration") then save_config() end
+
+        imgui.text("Threshold Settings (0% to 100%) - Set the percentage at which the respective UI element will show. For example, if Health Threshold is set to 0.75, the health bar will always show when health is below 75%.")
+        
+        changed, config.health_threshold = imgui.slider_float("Health Threshold", config.health_threshold, 0.0, 1.0)
+        changed, config.stamina_threshold = imgui.slider_float("Stamina Threshold", config.stamina_threshold, 0.0, 1.0)
+        changed, config.sharpness_threshold = imgui.slider_float("Sharpness Threshold", config.sharpness_threshold, 0.0, 1.0)
+
+        imgui.separator()
+        _, config.debug_mode = imgui.checkbox("Enable Debug Logging", config.debug_mode)
+        
+        imgui.tree_pop()
+    end
+end)
 
 
-
--- =========================================================
+-- =================
 -- TIMER SYSTEM
--- =========================================================
+-- ======================================
 local function update_Timers()
     for name, timer in pairs(timers) do
         if timer.value > 0 then
@@ -79,9 +163,9 @@ local function start_Timer(name, duration, callback)
     }
 end
 
--- =========================================================
+-- ============================================
 -- GRAB GAMEOBJECTS
--- =========================================================
+-- ============================
 local function grab_Gui_GameObject(gui_type_string)
     local scene_manager = sdk.get_native_singleton("via.SceneManager")
     local scene_manager_type = sdk.find_type_definition("via.SceneManager")
@@ -103,7 +187,7 @@ local function grab_Gui_GameObject(gui_type_string)
     return gui_component:call("get_GameObject")
 end
 
--- =========================================================
+-- =============================
 -- SINGLETON & METHOD CALL HELPERS
 local function get_singleton(type_name)
     local singleton = sdk.get_managed_singleton(type_name)
@@ -146,9 +230,9 @@ local function  SetHideHUD()
     setHideHudMethod:call(guiBaseApp, true)
 end
 
--- =========================================================
+-- ============================
 -- HIDE VISUALS ONLY
--- =========================================================
+-- =========
 local function hide_GUI(game_obj, should_hide)
     if not game_obj then return end
 
@@ -162,9 +246,9 @@ local function hide_GUI(game_obj, should_hide)
 end
 
 --isUpdateInternal
--- =========================================================
+-- ==============
 -- Use this for elements like MapRing that refuse to hide
--- =========================================================
+-- ========================================
 local function hide_GUI_Hard(game_obj, should_hide)
     if not game_obj then return end
     local control = game_obj:call("getComponent(System.Type)", sdk.typeof("via.gui.Control"))
@@ -198,12 +282,38 @@ local function checkIfInCampStartup()
     end
 end
 
+local function updateStatusCheck(component_name, get_func, max_func, threshold, flag_ref)
+    local pm = sdk.get_managed_singleton("app.PlayerManager")
+    local player = pm and pm:call("getMasterPlayer")
+    local char = player and player:call("get_Character")
+    
+    if component_name == "weapon" then
+        local weapon = char and char:call("get_Weapon")
+        local comp = weapon and weapon:call("get_Sharpness")
+        if comp then
+            local ratio = comp:call(get_func) / comp:call(max_func)
+            return ratio < threshold
+        end
+    else
+        local status = char and char:call("get_HunterStatus")
+        local comp = status and status:get_field(component_name)
+        if component_name == "_Health" and comp then comp = comp:get_field("<HealthMgr>k__BackingField") end
+        if comp then
+            local ratio = comp:call(get_func) / comp:call(max_func)
+            return ratio < threshold
+        end
+    end
+    return false
+end
 
-
-
--- =========================================================
+local function updateHunterStatus()
+    isHealthLow = updateStatusCheck("_Health", "get_Health", "get_MaxHealth", config.health_threshold)
+    isStaminaLow = updateStatusCheck("_Stamina", "get_Stamina", "get_MaxStamina", config.stamina_threshold)
+    isSharpnessLow = updateStatusCheck("weapon", "get_SharpnessVal", "get_MaxSharpnessVal", config.sharpness_threshold)
+end
+-- ====================
 -- HEALTH CHECK LOGIC
--- =========================================================
+-- ====================================
 local function updateHealthStatus()
     local pm = sdk.get_managed_singleton("app.PlayerManager")
     if not pm then return end
@@ -231,7 +341,7 @@ local function updateHealthStatus()
     if current and max and max > 0 then
         local ratio = current / max
         -- IF health is below 75%, show health UI regardless of other states
-        if ratio < 0.75 then
+        if ratio < config.health_threshold then
             isHealthLow = true
         else
             isHealthLow = false
@@ -271,7 +381,7 @@ local function updatesStaminaStatus()
     if current and max and max > 0 then
         local ratio = current / max
         -- IF stamina is below 40%, show stamina UI regardless of other states
-        if ratio < 0.40 then
+        if ratio < config.stamina_threshold then
             isStaminaLow = true
         else
             isStaminaLow = false
@@ -279,9 +389,9 @@ local function updatesStaminaStatus()
     end
 end
 
--- =========================================================
+-- ==========================
 -- SHARPNESS CHECK LOGIC
--- =========================================================
+-- ==========================================
 local function updateSharpnessStatus()
     local pm = sdk.get_managed_singleton("app.PlayerManager")
     if not pm then return end
@@ -309,7 +419,7 @@ local function updateSharpnessStatus()
     if current and max and max > 0 then
         local ratio = current / max
         -- IF sharpness is below 80%, SHOW the HUD element
-        if ratio < 0.80 then
+        if ratio < config.sharpness_threshold then
             isSharpnessLow = true
         else
             isSharpnessLow = false
@@ -384,6 +494,18 @@ hook_method("app.cQuestStart", "enter", function()
 
     startSubMenu_Open = false
     virtualMouseMenu_Open = false
+end)
+
+
+-----------------------------
+-----Chat menu-----------
+------------------------------
+
+hook_method("app.GUIFlowChatLogCommunication",
+"start(app.GUIFlowChatLogCommunication.BOOT, ace.IGUIFlowHandle)",function()
+
+    chatMenu_Open = true
+    print("Chat menu opened")
 end)
 
 
@@ -514,18 +636,6 @@ end)
 
 
 
-
-------------------------------
------Chat menu-----------
-------------------------------
-hook_method("app.GUIFlowChatLogCommunication",
-"start(app.GUIFlowChatLogCommunication.BOOT, ace.IGUIFlowHandle)",
-    function(args)
-        chatMenu_Open = true
-        print("Chat menu opened")
-end)
-
-
 ------------------
 
 local function PrintStates()
@@ -565,20 +675,20 @@ re.on_frame(function()
     --------------
     ---3D Map Transition Logic----------------
     -------------
-        if mapTransitioning then
-            mapTransitioningFrames = mapTransitioningFrames - 1
-            if mapTransitioningFrames <= 0 then
-                finishMapTransition()
-                print("Map transition complete — unblocking")
-            end
+    if mapTransitioning then
+        mapTransitioningFrames = mapTransitioningFrames - 1
+        if mapTransitioningFrames <= 0 then
+            finishMapTransition()
+            print("Map transition complete — unblocking")
         end
+    end
 
-        -- Clear any leftover virtual mouse state
-        clearLingeringVirtualMouse()
-        -- only one map type should be open
-        resolveConflictingMapStates()
-        -- Handle any queued map close
-        finalizeQueuedMapClose()
+    -- Clear any leftover virtual mouse state
+    clearLingeringVirtualMouse()
+    -- only one map type should be open
+    resolveConflictingMapStates()
+    -- Handle any queued map close
+    finalizeQueuedMapClose()
     -----------------------------
 
 
@@ -608,7 +718,8 @@ re.on_frame(function()
     -- State Debug
     --PrintStates()
 
-    local show_general_ui = inCamp
+    local show_general_ui =
+        inCamp
     or itemBar_Open
     or chatMenu_Open
     or localMap_Open
@@ -618,7 +729,12 @@ re.on_frame(function()
     or mapTransitioning
     or startSubMenu_Open
     
-
+local conditions = {
+        general   = not show_general_ui,
+        health    = not (show_general_ui or isHealthLow),
+        stamina   = not (show_general_ui or isStaminaLow),
+        sharpness = not (show_general_ui or isSharpnessLow)
+    }
 
     local show_health_ui = show_general_ui or isHealthLow
     local show_stamina_ui = show_general_ui or isStaminaLow
@@ -630,29 +746,51 @@ re.on_frame(function()
 
     local hide_general = not show_general_ui
 
-    --Hide HP Bar with its own logic check, since we want it to show if health is low even if other UI is hidden
-    hide_GUI(hpBar_GO, hide_health)
-    hide_GUI(sharpness_GO, hide_sharpness)
-    hide_GUI(staminaBar_GO, hide_stamina)
-    
-    --SetHideHUD()
 
-    -- Hide UI and stop updates for elements that refuse to hide properly with just set_DrawSelf
-    hide_GUI_Hard(mapRing_GO, hide_general)
-    hide_GUI_Hard(mapGround_GO, hide_general)
-    hide_GUI_Hard(mapIcons_GO, hide_general)
-    hide_GUI_Hard(questList_GO, hide_general)
-    hide_GUI_Hard(itemList_GO, hide_general)
+    for _, el in ipairs(UI_ELEMENTS) do
+            -- Grab object if it isn't cached
+            if not el.go then
+                el.go = grab_Gui_GameObject(el.id)
+            end
+
+            -- Check the calculated hide state based on its logic group
+            local should_hide = conditions[el.logic]
+
+            -- OVERRIDE: If the user ignored it in the config, never hide it
+            if config.ignored_elements[el.key] then
+                should_hide = false 
+            end
+
+            -- Apply the hide using the correct method
+            if el.hide_type == "soft" then
+                hide_GUI(el.go, should_hide)
+            elseif el.hide_type == "hard" then
+                hide_GUI_Hard(el.go, should_hide)
+            end
+        end
+    -- --Hide HP Bar with its own logic check, since we want it to show if health is low even if other UI is hidden
+    -- hide_GUI(hpBar_GO, hide_health)
+    -- hide_GUI(sharpness_GO, hide_sharpness)
+    -- hide_GUI(staminaBar_GO, hide_stamina)
+    
+    -- --SetHideHUD()
+
+    -- -- Hide UI and stop updates for elements that refuse to hide properly with just set_DrawSelf
+    -- hide_GUI_Hard(mapRing_GO, hide_general)
+    -- hide_GUI_Hard(mapGround_GO, hide_general)
+    -- hide_GUI_Hard(mapIcons_GO, hide_general)
+    -- hide_GUI_Hard(questList_GO, hide_general)
+    -- hide_GUI_Hard(itemList_GO, hide_general)
 
     
-    -- HideUI for elements that respond to set_DrawSelf or ForceInvisible
-    hide_GUI(itemList_GO, hide_general)
-    hide_GUI(itemBar_GO, hide_general)
-    hide_GUI(playerNames_GO, hide_general)
-    hide_GUI(guiBG_GO, hide_general)
-    hide_GUI(guiFront_GO, hide_general)
-    hide_GUI(slingerInfo_GO, hide_general)
-    hide_GUI(partyMemberList_GO, hide_general)
+    -- -- HideUI for elements that respond to set_DrawSelf or ForceInvisible
+    -- hide_GUI(itemList_GO, hide_general)
+    -- hide_GUI(itemBar_GO, hide_general)
+    -- hide_GUI(playerNames_GO, hide_general)
+    -- hide_GUI(guiBG_GO, hide_general)
+    -- hide_GUI(guiFront_GO, hide_general)
+    -- hide_GUI(slingerInfo_GO, hide_general)
+    -- hide_GUI(partyMemberList_GO, hide_general)
 
 
 end)
