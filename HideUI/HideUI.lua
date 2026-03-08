@@ -36,29 +36,34 @@ local timers = {}
 
 
 -- Cache variables
-local itemBar_GO = nil
-local hpBar_GO = nil
-local staminaBar_GO = nil
-local questList_GO = nil
-local map_GO = nil
-local mapRing_GO = nil      
-local playerNames_GO = nil  
-local sharpness_GO = nil    
-local mapIcons_GO = nil     -- app.GUI060002
-local mapIcons2_GO = nil    -- app.GUI060008
-local guiBG_GO = nil        -- app.GUI060001 
-local mapGround_GO = nil    -- app.GUI060008 
-local guiFront_GO = nil     -- app.GUI060000
-local worldMap_GO = nil     -- app.GUI060102
-local localMap_GO = nil     -- app.GUI060101 
-local itemList_GO = nil     -- app.GUI020200
-local slingerInfo_GO = nil  -- app.GUI020017
-local partyMemberList_GO = nil -- app.GUI020011
+-- local itemBar_GO = nil
+-- local hpBar_GO = nil
+-- local staminaBar_GO = nil
+-- local questList_GO = nil
+-- local map_GO = nil
+-- local mapRing_GO = nil      
+-- local playerNames_GO = nil  
+-- local sharpness_GO = nil    
+-- local mapIcons_GO = nil     -- app.GUI060002
+-- local mapIcons2_GO = nil    -- app.GUI060008
+-- local guiBG_GO = nil        -- app.GUI060001 
+-- local mapGround_GO = nil    -- app.GUI060008 
+-- local guiFront_GO = nil     -- app.GUI060000
+-- local worldMap_GO = nil     -- app.GUI060102
+-- local localMap_GO = nil     -- app.GUI060101 
+-- local itemList_GO = nil     -- app.GUI020200
+-- local slingerInfo_GO = nil  -- app.GUI020017
+-- local partyMemberList_GO = nil -- app.GUI020011
 
 local UI_ELEMENTS = {
+
+    -- Elements that are hidden based on health/stamina/sharpness thresholds, but still take up space (soft hide)
     { key = "hpBar",           id = "app.GUI020003", name = "Health Bar",        hide_type = "soft", logic = "health" },
     { key = "staminaBar",      id = "app.GUI020004", name = "Stamina Bar",       hide_type = "soft", logic = "stamina" },
     { key = "sharpness",       id = "app.GUI020015", name = "Sharpness",         hide_type = "soft", logic = "sharpness" },
+
+    -- Soft Hide Elements (Hidden based on conditions, but still take up space)
+    -- General UI elements that are hidden whenever the player is in camp, has a sub menu open, has the map open, or has started a quest (configurable via conditions)
     { key = "itemBar",         id = "app.GUI020006", name = "Item Bar",          hide_type = "soft", logic = "general" },
     { key = "slingerInfo",     id = "app.GUI020017", name = "Slinger Info",      hide_type = "soft", logic = "general" },
     { key = "playerNames",     id = "app.GUI020016", name = "Player Names",      hide_type = "soft", logic = "general" },
@@ -74,9 +79,9 @@ local UI_ELEMENTS = {
     { key = "itemList",        id = "app.GUI020200", name = "Item List",         hide_type = "hard", logic = "general" }
 }
 
--- ================================
--- CONFIGURATION SYSTEM
--- ===========================
+-- ==================================
+-- CONFIGURATION SYSTEM-----------
+-- ===========
 local config_filename = "HideUI_Config.json" -- Saves directly to reframework/data/
 local config = {
     health_threshold = 0.75,
@@ -106,7 +111,7 @@ local function load_config()
                 -- Safely merge nested tables (like ignored_elements)
                 for sub_k, sub_v in pairs(v) do config[k][sub_k] = sub_v end
             else
-                config[k] = v 
+                config[k] = v
             end
         end
     else
@@ -123,19 +128,36 @@ load_config()
 re.on_draw_ui(function()
 
     if imgui.tree_node("HideUI Settings") then
-        local changed = false
-        
+
         if imgui.button("Save Configuration") then save_config() end
+
+        imgui.separator()
 
         imgui.text("Threshold Settings (0% to 100%) - Set the percentage at which the respective UI element will show. For example, if Health Threshold is set to 0.75, the health bar will always show when health is below 75%.")
         
-        changed, config.health_threshold = imgui.slider_float("Health Threshold", config.health_threshold, 0.0, 1.0)
-        changed, config.stamina_threshold = imgui.slider_float("Stamina Threshold", config.stamina_threshold, 0.0, 1.0)
-        changed, config.sharpness_threshold = imgui.slider_float("Sharpness Threshold", config.sharpness_threshold, 0.0, 1.0)
+        _, config.health_threshold = imgui.slider_float("Health Threshold", config.health_threshold, 0.0, 1.0)
+        _, config.stamina_threshold = imgui.slider_float("Stamina Threshold", config.stamina_threshold, 0.0, 1.0)
+        _, config.sharpness_threshold = imgui.slider_float("Sharpness Threshold", config.sharpness_threshold, 0.0, 1.0)
+
+
+        imgui.separator()
+        -- Dynamic Menu for Ignored Elements
+        if imgui.tree_node("Ignored UI Elements (Always Visible)") then
+
+            imgui.text_colored
+            ("Check a box to prevent the script from hiding that element.", 0xFFAAAAAA)
+            for _, el in ipairs(UI_ELEMENTS) do
+                local changed, val = imgui.checkbox(el.name, config.ignored_elements[el.key])
+                if changed then 
+                    config.ignored_elements[el.key] = val 
+                end
+            end
+            imgui.tree_pop()
+        end
 
         imgui.separator()
         _, config.debug_mode = imgui.checkbox("Enable Debug Logging", config.debug_mode)
-        
+
         imgui.tree_pop()
     end
 end)
@@ -652,7 +674,7 @@ end
 ---------------------------------------------------------
 re.on_frame(function()
 
-    -- 
+
     if not initialized then
         checkIfInCampStartup()
         initialized = true
@@ -666,6 +688,7 @@ re.on_frame(function()
 
 
     update_Timers()
+    updateHunterStatus()
     updateHealthStatus()
     updatesStaminaStatus()
     updateSharpnessStatus()
@@ -698,22 +721,22 @@ re.on_frame(function()
 
 
     -- Cache Objects 
-    if not map_GO then map_GO = grab_Gui_GameObject("app.GUI060011") end
-    if not guiBG_GO then guiBG_GO = grab_Gui_GameObject("app.GUI060001") end
-    if not hpBar_GO then hpBar_GO = grab_Gui_GameObject("app.GUI020003") end
-    if not mapRing_GO then mapRing_GO = grab_Gui_GameObject("app.GUI060010") end
-    if not itemBar_GO then itemBar_GO = grab_Gui_GameObject("app.GUI020006") end
-    if not guiFront_GO then guiFront_GO = grab_Gui_GameObject("app.GUI060000") end
-    if not itemList_GO then itemList_GO = grab_Gui_GameObject("app.GUI020200") end
-    if not mapIcons_GO then mapIcons_GO = grab_Gui_GameObject("app.GUI060002") end
-    if not sharpness_GO then sharpness_GO = grab_Gui_GameObject("app.GUI020015") end
-    if not questList_GO then questList_GO = grab_Gui_GameObject("app.GUI020018") end
-    if not mapIcons2_GO then mapIcons2_GO = grab_Gui_GameObject("app.GUI060008") end
-    if not mapGround_GO then mapGround_GO = grab_Gui_GameObject("app.GUI060008") end
-    if not staminaBar_GO then staminaBar_GO = grab_Gui_GameObject("app.GUI020004") end
-    if not playerNames_GO then playerNames_GO = grab_Gui_GameObject("app.GUI020016") end
-    if not slingerInfo_GO then slingerInfo_GO = grab_Gui_GameObject("app.GUI020017") end
-    if not partyMemberList_GO then partyMemberList_GO = grab_Gui_GameObject("app.GUI020011") end
+    -- if not map_GO then map_GO = grab_Gui_GameObject("app.GUI060011") end
+    -- if not guiBG_GO then guiBG_GO = grab_Gui_GameObject("app.GUI060001") end
+    -- if not hpBar_GO then hpBar_GO = grab_Gui_GameObject("app.GUI020003") end
+    -- if not mapRing_GO then mapRing_GO = grab_Gui_GameObject("app.GUI060010") end
+    -- if not itemBar_GO then itemBar_GO = grab_Gui_GameObject("app.GUI020006") end
+    -- if not guiFront_GO then guiFront_GO = grab_Gui_GameObject("app.GUI060000") end
+    -- if not itemList_GO then itemList_GO = grab_Gui_GameObject("app.GUI020200") end
+    -- if not mapIcons_GO then mapIcons_GO = grab_Gui_GameObject("app.GUI060002") end
+    -- if not sharpness_GO then sharpness_GO = grab_Gui_GameObject("app.GUI020015") end
+    -- if not questList_GO then questList_GO = grab_Gui_GameObject("app.GUI020018") end
+    -- if not mapIcons2_GO then mapIcons2_GO = grab_Gui_GameObject("app.GUI060008") end
+    -- if not mapGround_GO then mapGround_GO = grab_Gui_GameObject("app.GUI060008") end
+    -- if not staminaBar_GO then staminaBar_GO = grab_Gui_GameObject("app.GUI020004") end
+    -- if not playerNames_GO then playerNames_GO = grab_Gui_GameObject("app.GUI020016") end
+    -- if not slingerInfo_GO then slingerInfo_GO = grab_Gui_GameObject("app.GUI020017") end
+    -- if not partyMemberList_GO then partyMemberList_GO = grab_Gui_GameObject("app.GUI020011") end
 
     -- State Debug
     --PrintStates()
@@ -728,7 +751,9 @@ re.on_frame(function()
     or questHasStarted
     or mapTransitioning
     or startSubMenu_Open
-    
+
+
+
 local conditions = {
         general   = not show_general_ui,
         health    = not (show_general_ui or isHealthLow),
@@ -736,61 +761,28 @@ local conditions = {
         sharpness = not (show_general_ui or isSharpnessLow)
     }
 
-    local show_health_ui = show_general_ui or isHealthLow
-    local show_stamina_ui = show_general_ui or isStaminaLow
-    local show_sharpness_ui = show_general_ui or isSharpnessLow
-
-    local hide_health  = not show_health_ui
-    local hide_stamina = not show_stamina_ui
-    local hide_sharpness = not show_sharpness_ui
-
-    local hide_general = not show_general_ui
-
-
-    for _, el in ipairs(UI_ELEMENTS) do
+    for _, gui in ipairs(UI_ELEMENTS) do
             -- Grab object if it isn't cached
-            if not el.go then
-                el.go = grab_Gui_GameObject(el.id)
+            if not gui.go then
+                gui.go = grab_Gui_GameObject(gui.id)
             end
 
             -- Check the calculated hide state based on its logic group
-            local should_hide = conditions[el.logic]
+            local should_hide = conditions[gui.logic]
 
             -- OVERRIDE: If the user ignored it in the config, never hide it
-            if config.ignored_elements[el.key] then
+            if config.ignored_elements[gui.key] then
                 should_hide = false 
             end
 
             -- Apply the hide using the correct method
-            if el.hide_type == "soft" then
-                hide_GUI(el.go, should_hide)
-            elseif el.hide_type == "hard" then
-                hide_GUI_Hard(el.go, should_hide)
+            if gui.hide_type == "soft" then
+                hide_GUI(gui.go, should_hide)
+            elseif gui.hide_type == "hard" then
+                hide_GUI_Hard(gui.go, should_hide)
             end
         end
-    -- --Hide HP Bar with its own logic check, since we want it to show if health is low even if other UI is hidden
-    -- hide_GUI(hpBar_GO, hide_health)
-    -- hide_GUI(sharpness_GO, hide_sharpness)
-    -- hide_GUI(staminaBar_GO, hide_stamina)
-    
-    -- --SetHideHUD()
 
-    -- -- Hide UI and stop updates for elements that refuse to hide properly with just set_DrawSelf
-    -- hide_GUI_Hard(mapRing_GO, hide_general)
-    -- hide_GUI_Hard(mapGround_GO, hide_general)
-    -- hide_GUI_Hard(mapIcons_GO, hide_general)
-    -- hide_GUI_Hard(questList_GO, hide_general)
-    -- hide_GUI_Hard(itemList_GO, hide_general)
-
-    
-    -- -- HideUI for elements that respond to set_DrawSelf or ForceInvisible
-    -- hide_GUI(itemList_GO, hide_general)
-    -- hide_GUI(itemBar_GO, hide_general)
-    -- hide_GUI(playerNames_GO, hide_general)
-    -- hide_GUI(guiBG_GO, hide_general)
-    -- hide_GUI(guiFront_GO, hide_general)
-    -- hide_GUI(slingerInfo_GO, hide_general)
-    -- hide_GUI(partyMemberList_GO, hide_general)
 
 
 end)
