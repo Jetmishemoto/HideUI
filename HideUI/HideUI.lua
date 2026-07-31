@@ -1,5 +1,8 @@
 
 local _VERSION = "3.0.0"
+local re = re
+local sdk = sdk
+local imgui = imgui
 local json = json
 
 local initialized = false
@@ -24,6 +27,7 @@ local questHasStarted = false
 local chatMenu_Open = false
 local startSubMenu_Open = false
 
+local frame_counter = 0
 
 -- Placeholder flags to prevent nil errors in Quest Hook
 local keyboardSettings_Open = false 
@@ -32,28 +36,33 @@ local virtualMouseMenu_Open = false
 -- Timer Constants
 local START_SUB_MENU_TIMEOUT = 60
 local QUEST_START_UI_TIMEOUT = 280
+
+
 local timers = {}
+local active_controls = {}
 
+-- local Cache variables ={
 
--- Cache variables
--- local itemBar_GO = nil
--- local hpBar_GO = nil
--- local staminaBar_GO = nil
--- local questList_GO = nil
--- local map_GO = nil
--- local mapRing_GO = nil      
--- local playerNames_GO = nil  
--- local sharpness_GO = nil    
--- local mapIcons_GO = nil     -- app.GUI060002
--- local mapIcons2_GO = nil    -- app.GUI060008
--- local guiBG_GO = nil        -- app.GUI060001 
--- local mapGround_GO = nil    -- app.GUI060008 
--- local guiFront_GO = nil     -- app.GUI060000
--- local worldMap_GO = nil     -- app.GUI060102
--- local localMap_GO = nil     -- app.GUI060101 
--- local itemList_GO = nil     -- app.GUI020200
--- local slingerInfo_GO = nil  -- app.GUI020017
--- local partyMemberList_GO = nil -- app.GUI020011
+    -- local itemBar_GO = nil
+    -- local hpBar_GO = nil
+    -- local staminaBar_GO = nil
+    -- local questList_GO = nil
+    -- local map_GO = nil
+    -- local mapRing_GO = nil      
+    -- local playerNames_GO = nil  
+    -- local sharpness_GO = nil    
+    -- local mapIcons_GO = nil     -- app.GUI060002
+    -- local mapIcons2_GO = nil    -- app.GUI060008
+    -- local guiBG_GO = nil        -- app.GUI060001 
+    -- local mapGround_GO = nil    -- app.GUI060008 
+    -- local guiFront_GO = nil     -- app.GUI060000
+    -- local worldMap_GO = nil     -- app.GUI060102
+    -- local localMap_GO = nil     -- app.GUI060101 
+    -- local itemList_GO = nil     -- app.GUI020200
+    -- local slingerInfo_GO = nil  -- app.GUI020017
+    -- local partyMemberList_GO = nil -- app.GUI020011
+    -- local AimReticle = "app.GUI020019"
+--}
 
 local UI_ELEMENTS = {
 
@@ -72,11 +81,10 @@ local UI_ELEMENTS = {
     { key = "guiFront",        id = "app.GUI060000", name = "GUI Front",         hide_type = "soft", logic = "general" },
     
     -- Hard Hide Elements
-    { key = "mapRing",         id = "app.GUI060010", name = "Map Ring",          hide_type = "hard", logic = "general" },
-    { key = "mapGround",       id = "app.GUI060008", name = "Map Ground",        hide_type = "hard", logic = "general" },
-    { key = "mapIcons",        id = "app.GUI060002", name = "Map Icons",         hide_type = "hard", logic = "general" },
+    { key = "AimReticle",      id = "app.GUI020019", name = "Aim Reticle",       hide_type = "hard", logic = "general" },
     { key = "questList",       id = "app.GUI020018", name = "Quest List",        hide_type = "hard", logic = "general" },
-    { key = "itemList",        id = "app.GUI020200", name = "Item List",         hide_type = "hard", logic = "general" }
+    { key = "itemList",        id = "app.GUI020200", name = "Item List",         hide_type = "hard", logic = "general" },
+    { key = "minimap",         ids = {"app.GUI060010", "app.GUI060008", "app.GUI060002"}, name = "Minimap", hide_type = "hard", logic = "general" }
 }
 
 -- ==================================
@@ -122,7 +130,7 @@ end
 load_config()
 
 -- ===========================
--- REFRAMEWORK UI MENU
+-- REF UI MENU
 -- ===================================
 
 re.on_draw_ui(function()
@@ -163,6 +171,29 @@ re.on_draw_ui(function()
 end)
 
 
+-- ============================
+-- FIND ROOT WINDOW
+-- =========
+local function get_parent_root_window(control)
+    local ret = control
+    local parent = ret
+    while true do
+        parent = parent:call("get_Parent")
+        if not parent then
+            break
+        end
+        ret = parent
+        if ret:call("get_Name") == "RootWindow" then
+            break
+        end
+    end
+    if ret and ret:call("get_Name") ~= "RootWindow" then
+        return nil
+    end
+    return ret
+end
+-- ============================
+
 -- =================
 -- TIMER SYSTEM
 -- ======================================
@@ -188,29 +219,28 @@ end
 -- ============================================
 -- GRAB GAMEOBJECTS
 -- ============================
+local cached_scene_manager = nil
+local cached_scene_manager_type = nil
+
 local function grab_Gui_GameObject(gui_type_string)
-    local scene_manager = sdk.get_native_singleton("via.SceneManager")
-    local scene_manager_type = sdk.find_type_definition("via.SceneManager")
-    
-    local scene = sdk.call_native_func(
-        scene_manager,
-        scene_manager_type,
-        "get_CurrentScene()"
-    )
-    
+    if not cached_scene_manager then
+        cached_scene_manager = sdk.get_native_singleton("via.SceneManager")
+        cached_scene_manager_type = sdk.find_type_definition("via.SceneManager")
+    end
+    local scene = sdk.call_native_func(cached_scene_manager, cached_scene_manager_type, "get_CurrentScene()")
     if not scene then return nil end
 
     local array = scene:call("findComponents(System.Type)", sdk.typeof(gui_type_string))
     if not array or array:call("get_Length") == 0 then return nil end
     
     local gui_component = array:get_Item(0)
-    if not gui_component then return nil end
-
-    return gui_component:call("get_GameObject")
+    return gui_component and gui_component:call("get_GameObject") or nil
 end
 
 -- =============================
 -- SINGLETON & METHOD CALL HELPERS
+--================
+
 local function get_singleton(type_name)
     local singleton = sdk.get_managed_singleton(type_name)
     if not singleton then
@@ -262,15 +292,14 @@ local function hide_GUI(game_obj, should_hide)
 
     if control then
         control:call("set_ForceInvisible(System.Boolean)", should_hide)
+        active_controls[control:get_address()] = { current_hide_state = should_hide }
     else
         game_obj:call("set_DrawSelf(System.Boolean)", not should_hide)
     end
 end
 
---isUpdateInternal
--- ==============
--- Use this for elements like MapRing that refuse to hide
--- ========================================
+
+
 local function hide_GUI_Hard(game_obj, should_hide)
     if not game_obj then return end
     local control = game_obj:call("getComponent(System.Type)", sdk.typeof("via.gui.Control"))
@@ -279,8 +308,12 @@ local function hide_GUI_Hard(game_obj, should_hide)
 
 
     game_obj:call("set_UpdateSelf(System.Boolean)", logic_state)
-    game_obj:call("set_ForceInvisible(System.Boolean)", logic_state)
     game_obj:call("set_DrawSelf(System.Boolean)", logic_state)
+
+    if control then
+        control:call("set_ForceInvisible(System.Boolean)", should_hide)
+        active_controls[control:get_address()] = { current_hide_state = should_hide }
+    end
 end
 
 
@@ -304,20 +337,20 @@ local function checkIfInCampStartup()
     end
 end
 
-local function updateStatusCheck(component_name, get_func, max_func, threshold, flag_ref)
-    local pm = sdk.get_managed_singleton("app.PlayerManager")
-    local player = pm and pm:call("getMasterPlayer")
-    local char = player and player:call("get_Character")
-    
+
+
+
+
+local function updateStatusCheck(character_obj, component_name, get_func, max_func, threshold)
     if component_name == "weapon" then
-        local weapon = char and char:call("get_Weapon")
+        local weapon = character_obj:call("get_Weapon")
         local comp = weapon and weapon:call("get_Sharpness")
         if comp then
             local ratio = comp:call(get_func) / comp:call(max_func)
             return ratio < threshold
         end
     else
-        local status = char and char:call("get_HunterStatus")
+        local status = character_obj:call("get_HunterStatus")
         local comp = status and status:get_field(component_name)
         if component_name == "_Health" and comp then comp = comp:get_field("<HealthMgr>k__BackingField") end
         if comp then
@@ -329,10 +362,22 @@ local function updateStatusCheck(component_name, get_func, max_func, threshold, 
 end
 
 local function updateHunterStatus()
-    isHealthLow = updateStatusCheck("_Health", "get_Health", "get_MaxHealth", config.health_threshold)
-    isStaminaLow = updateStatusCheck("_Stamina", "get_Stamina", "get_MaxStamina", config.stamina_threshold)
-    isSharpnessLow = updateStatusCheck("weapon", "get_SharpnessVal", "get_MaxSharpnessVal", config.sharpness_threshold)
+    local pm = sdk.get_managed_singleton("app.PlayerManager")
+    local player = pm and pm:call("getMasterPlayer")
+    local char = player and player:call("get_Character")
+    
+    if not char then
+        isHealthLow, isStaminaLow, isSharpnessLow = false, false, false
+        return
+    end
+
+    -- Pass the already fetched 'char' object to save heavy Native Calls
+    isHealthLow = updateStatusCheck(char, "_Health", "get_Health", "get_MaxHealth", config.health_threshold)
+    isStaminaLow = updateStatusCheck(char, "_Stamina", "get_Stamina", "get_MaxStamina", config.stamina_threshold)
+    isSharpnessLow = updateStatusCheck(char, "weapon", "get_SharpnessVal", "get_MaxSharpnessVal", config.sharpness_threshold)
 end
+
+
 -- ====================
 -- HEALTH CHECK LOGIC
 -- ====================================
@@ -498,164 +543,306 @@ local function hook_method(type_str, method_str, callback)
 end
 
 
--- Quest Start
-hook_method("app.cQuestStart", "enter", function()
-    questHasStarted = true
-    print("HideUI: Quest Started - Reinitializing Logic")
+-- -- Quest Start
+-- hook_method("app.cQuestStart", "enter", function()
+--     questHasStarted = true
+--     print("HideUI: Quest Started - Reinitializing Logic")
 
-    -- Force re-initialization to catch the camp status change
-    --initialized = false
+--     -- Force re-initialization to catch the camp status change
+--     --initialized = false
 
-    start_Timer("questUI", QUEST_START_UI_TIMEOUT, function()
-        questHasStarted = false
-        inCamp = false -- Force hide after quest start timeout, as we assume player has left camp by then
-        keyboardSettings_Open = false
-        worldMap_Open = false
-        print("HideUI: Quest UI Timeout")
-    end)
+--     start_Timer("questUI", QUEST_START_UI_TIMEOUT, function()
+--         questHasStarted = false
+--         inCamp = false -- Force hide after quest start timeout, as we assume player has left camp by then
+--         keyboardSettings_Open = false
+--         worldMap_Open = false
+--         print("HideUI: Quest UI Timeout")
+--     end)
 
-    startSubMenu_Open = false
-    virtualMouseMenu_Open = false
-end)
-
-
------------------------------
------Chat menu-----------
-------------------------------
-
-hook_method("app.GUIFlowChatLogCommunication",
-"start(app.GUIFlowChatLogCommunication.BOOT, ace.IGUIFlowHandle)",function()
-
-    chatMenu_Open = true
-    print("Chat menu opened")
-end)
+--     startSubMenu_Open = false
+--     virtualMouseMenu_Open = false
+-- end)
 
 
+-- -----------------------------
+-- -----Chat menu-----------
+-- ------------------------------
 
--- SubMenus (Triggers Timer)
-hook_method("app.GUIManager", "instantiatePrefab", function()
-    startSubMenu_Open = true
-    print("HideUI: SubMenu Event Triggered")
+-- hook_method("app.GUIFlowChatLogCommunication",
+-- "start(app.GUIFlowChatLogCommunication.BOOT, ace.IGUIFlowHandle)",function()
+
+--     chatMenu_Open = true
+--     print("Chat menu opened")
+-- end)
+
+
+
+-- -- SubMenus (Triggers Timer)
+-- hook_method("app.GUIManager", "instantiatePrefab", function()
+--     startSubMenu_Open = true
+--     print("HideUI: SubMenu Event Triggered")
     
-    -- Start/Restart the timer
-    start_Timer("startSubMenu", START_SUB_MENU_TIMEOUT, function()
-        startSubMenu_Open = false
-        print("HideUI: SubMenu Timer Ended")
-    end)
-end)
+--     -- Start/Restart the timer
+--     start_Timer("startSubMenu", START_SUB_MENU_TIMEOUT, function()
+--         startSubMenu_Open = false
+--         print("HideUI: SubMenu Timer Ended")
+--     end)
+-- end)
 
--- Leaving Camp 
-hook_method("app.GUIManager", "requestStage", function()
-    inCamp = false
-    print("Event: Left camp / Stage Request")
-end)
+-- -- Leaving Camp 
+-- hook_method("app.GUIManager", "requestStage", function()
+--     inCamp = false
+--     print("Event: Left camp / Stage Request")
+-- end)
 
--- Entering/In Camp (Life Area check)
-hook_method("app.GUIManager", "requestLifeArea", function(retval)
+-- -- Entering/In Camp (Life Area check)
+-- hook_method("app.GUIManager", "requestLifeArea", function(retval)
 
-    inCamp = true
-    print("Event: In Camp") 
-end)
-
-
-hook_method("app.GUI020008", "onOpenApp", function()
-    itemBar_Open = true
-    print("HideUI: Item bar opened") 
-end)
-
-hook_method("app.GUI020008PartsPallet", "close", function()
-    itemBar_Open = false
-    print("HideUI: Item bar closed")
-end)
+--     inCamp = true
+--     print("Event: In Camp") 
+-- end)
 
 
--- pasue Menus
-hook_method("app.GUI030000", "onOpen",function()
-    pauseMenu_Open = true
-    print("HideUI: Pause Menu Opened")
+-- hook_method("app.GUI020008", "onOpenApp", function()
+--     itemBar_Open = true
+--     print("HideUI: Item bar opened") 
+-- end)
 
-end)
-
-
-hook_method("app.GUI030000", "onClose",function()
-    pauseMenu_Open = false
-    print("HideUI: Pause Menu Closed")
-end)
+-- hook_method("app.GUI020008PartsPallet", "close", function()
+--     itemBar_Open = false
+--     print("HideUI: Item bar closed")
+-- end)
 
 
+-- -- pasue Menus
+-- hook_method("app.GUI030000", "onOpen",function()
+--     pauseMenu_Open = true
+--     print("HideUI: Pause Menu Opened")
 
---------------
----
---------------
---World Map 
-hook_method("app.GUI060102", "onOpen", function()
-    worldMap_Open = true
-        localMapFromWorldMap = true -- flag we're transitioning from world map
-        mapTransitioning = true
-        mapTransitioningFrames = 60
-    print("HideUI: World Map Opened")
-end)
+-- end)
 
-hook_method("app.GUIManager", "isOpenReadyGUI060102", function()
-    worldMap_Open = false
-    if mapTransitioning then
-        --print("World Map closed early — forcibly ending map transition")
-        mapTransitioning = false
-        localMapFromWorldMap = false
-        mapTransitioningFrames = 0
-    end
-end)
 
----------------------------
--- Map transition start hook
---------------------------
----
-hook_method("app.cGUIMapFlowActive", "enter", function()
-    mapTransitioning = true
-    localMap_Open = true
-    mapTransitioningFrames = 60
-    print("HideUI: Local Map Flow Active - Map Transition Started")
-end)
+-- hook_method("app.GUI030000", "onClose",function()
+--     pauseMenu_Open = false
+--     print("HideUI: Pause Menu Closed")
+-- end)
 
-----------
--- Local Map
-------- 
--- hook_method("app.GUI060000", "onOpen", function()
+
+
+-- --------------
+-- ---
+-- --------------
+-- --World Map 
+-- hook_method("app.GUI060102", "onOpen", function()
+--     worldMap_Open = true
+--         localMapFromWorldMap = true -- flag we're transitioning from world map
+--         mapTransitioning = true
+--         mapTransitioningFrames = 60
+--     print("HideUI: World Map Opened")
+-- end)
+
+-- hook_method("app.GUIManager", "isOpenReadyGUI060102", function()
+--     worldMap_Open = false
+--     if mapTransitioning then
+--         --print("World Map closed early — forcibly ending map transition")
+--         mapTransitioning = false
+--         localMapFromWorldMap = false
+--         mapTransitioningFrames = 0
+--     end
+-- end)
+
+-- ---------------------------
+-- -- Map transition start hook
+-- --------------------------
+-- ---
+-- hook_method("app.cGUIMapFlowActive", "enter", function()
+--     mapTransitioning = true
 --     localMap_Open = true
+--     mapTransitioningFrames = 60
+--     print("HideUI: Local Map Flow Active - Map Transition Started")
+-- end)
+
+-- ----------
+-- -- Local Map
+-- ------- 
+-- -- hook_method("app.GUI060000", "onOpen", function()
+-- --     localMap_Open = true
+-- --     print("HideUI: Local Map Opened")
+-- -- end)
+
+
+
+-- -- called when opening local map from world map, and also when opening local map directly (like from camp or quest start) 
+-- --app.cGUIMapFlowActive.enter
+
+
+-- hook_method("app.cGUIMapController", "requestOpen", function()
+--     localMap_Open = true
+--     mapTransitioning = true
+--     mapTransitioningFrames = 60
 --     print("HideUI: Local Map Opened")
 -- end)
 
 
+-- hook_method("app.cGUI060000Recommend", "onClose", function()
+--     if mapTransitioning and virtualMouseMenu_Open then
+--         --print("Skipping map close — mapTransitioning still active")
+--         localMapCloseQueued = true
+--         return
+--     end
 
--- called when opening local map from world map, and also when opening local map directly (like from camp or quest start) 
---app.cGUIMapFlowActive.enter
-
-
-hook_method("app.cGUIMapController", "requestOpen", function()
-    localMap_Open = true
-    mapTransitioning = true
-    mapTransitioningFrames = 60
-    print("HideUI: Local Map Opened")
-end)
-
-
-hook_method("app.cGUI060000Recommend", "onClose", function()
-    if mapTransitioning and virtualMouseMenu_Open then
-        --print("Skipping map close — mapTransitioning still active")
-        localMapCloseQueued = true
-        return
-    end
-
-        mapTransitioning = false
-    localMap_Open = false
-    print("HideUI: Local Map Closed via Recommend Close")
-end)
-
--- hook_method("app.GUIManager", "close3DMap", function()
+--         mapTransitioning = false
 --     localMap_Open = false
---     print("HideUI: Local Map Closed via Manager")
+--     print("HideUI: Local Map Closed via Recommend Close")
 -- end)
 
+-- -- hook_method("app.GUIManager", "close3DMap", function()
+-- --     localMap_Open = false
+-- --     print("HideUI: Local Map Closed via Manager")
+-- -- end)
+
+local HOOK_DEFS = {
+    {
+        class = "via.gui.Control", method = "update",
+        pre = function(args)
+            local control = sdk.to_managed_object(args[2])
+            if not control then return end
+            
+            local addr = control:get_address()
+            local gui = active_controls[addr]
+            
+            -- If this Control is in our memory cache AND it's marked to hide, force it invisible!
+            if gui and gui.current_hide_state then
+                control:call("set_ForceInvisible(System.Boolean)", true)
+                local game_obj = control:call("get_GameObject")
+                if game_obj then
+                    game_obj:call("set_DrawSelf(System.Boolean)", false)
+                end
+            end
+        end
+    },
+    -- Quest Hooks
+    {
+        class = "app.cQuestStart", method = "enter",
+        pre = function()
+            questHasStarted = true
+            if config.debug_mode then print("HideUI: Quest Started") end
+            start_Timer("questUI", config.quest_start_timeout, function()
+                questHasStarted, inCamp, keyboardSettings_Open, worldMap_Open = false, false, false, false
+            end)
+            startSubMenu_Open, virtualMouseMenu_Open = false, false
+        end
+    },
+
+    -- Menu & UI Hooks
+    {
+        class = "app.GUIFlowChatLogCommunication", 
+        method = "start(app.GUIFlowChatLogCommunication.BOOT, ace.IGUIFlowHandle)",
+        pre = function() chatMenu_Open = true 
+
+        end
+    },
+
+    {
+        class = "app.GUIManager", 
+        method = "instantiatePrefab",
+        pre = function()
+            startSubMenu_Open = true
+            start_Timer("startSubMenu", config.submenu_timeout, function() startSubMenu_Open = false end)
+        end
+    },
+
+    -- Item Bar Hooks
+    { 
+        class = "app.GUI020008", 
+        method = "onOpenApp", 
+        pre = function() itemBar_Open = true 
+
+        end 
+    },
+
+    { class = "app.GUI020008PartsPallet", method = "close", pre = function() itemBar_Open = false end },
+
+    -- Pause Menu Hooks
+    {
+        class = "app.GUI030000",
+        method = "onOpen",
+        pre = function() pauseMenu_Open = true 
+    end 
+
+    },
+
+    { 
+        class = "app.GUI030000", 
+    method = "onClose", 
+    pre = function() pauseMenu_Open = false end 
+    },
+
+    -- Camp Hooks
+    { 
+        class = "app.GUIManager", 
+        method = "requestStage", 
+        pre = function() inCamp = false 
+        end
+    },
+
+    { 
+        class = "app.GUIManager", 
+        method = "requestLifeArea",
+        pre = function(retval) inCamp = true end
+    },
+    
+    -- Map Hooks
+    {
+        class = "app.GUI060102", 
+        method = "onOpen",
+        pre = function() worldMap_Open, localMapFromWorldMap, mapTransitioning, mapTransitioningFrames = true, true, true, 60 end
+    },
+    {
+        class = "app.GUIManager", 
+        method = "isOpenReadyGUI060102",
+        pre = function()
+            worldMap_Open = false
+            if mapTransitioning then mapTransitioning, localMapFromWorldMap, mapTransitioningFrames = false, false, 0 end
+        end
+    },
+    {
+        class = "app.cGUIMapFlowActive", 
+        method = "enter",
+        pre = function() mapTransitioning, localMap_Open, mapTransitioningFrames = true, true, 60 end
+    },
+    {
+        class = "app.cGUIMapController", 
+        method = "requestOpen",
+        pre = function() localMap_Open, mapTransitioning, mapTransitioningFrames = true, true, 60 end
+    },
+    {
+        class = "app.cGUI060000Recommend", 
+        method = "onClose",
+        pre = function()
+            if mapTransitioning and virtualMouseMenu_Open then
+                localMapCloseQueued = true
+                return
+            end
+            mapTransitioning, localMap_Open = false, false
+        end
+    }
+}
+
+-- Execute Hook Registration
+for _, def in ipairs(HOOK_DEFS) do
+    local t = sdk.find_type_definition(def.class)
+    if t then
+        local m = t:get_method(def.method)
+        if m then
+            sdk.hook(m, def.pre, def.post)
+        elseif config.debug_mode then
+            print("[HideUI] Failed to hook: Method not found -> " .. def.class .. ":" .. def.method)
+        end
+    elseif config.debug_mode then
+        print("[HideUI] Failed to hook: Class not found -> " .. def.class)
+    end
+end
 
 
 ------------------
@@ -670,7 +857,7 @@ end
 
 -- re.on_script_reset(function()
 
--- MAIN LOOP-------------------------
+-- MAIN -------------------------
 ---------------------------------------------------------
 re.on_frame(function()
 
@@ -688,10 +875,11 @@ re.on_frame(function()
 
 
     update_Timers()
-    updateHunterStatus()
-    updateHealthStatus()
-    updatesStaminaStatus()
-    updateSharpnessStatus()
+
+    frame_counter = frame_counter + 1
+    if frame_counter % 4 == 0 then
+        updateHunterStatus()
+    end
 
 
 
@@ -706,37 +894,17 @@ re.on_frame(function()
         end
     end
 
+
+
     -- Clear any leftover virtual mouse state
     clearLingeringVirtualMouse()
+
     -- only one map type should be open
     resolveConflictingMapStates()
+
     -- Handle any queued map close
     finalizeQueuedMapClose()
     -----------------------------
-
-
-
-
-
-
-
-    -- Cache Objects 
-    -- if not map_GO then map_GO = grab_Gui_GameObject("app.GUI060011") end
-    -- if not guiBG_GO then guiBG_GO = grab_Gui_GameObject("app.GUI060001") end
-    -- if not hpBar_GO then hpBar_GO = grab_Gui_GameObject("app.GUI020003") end
-    -- if not mapRing_GO then mapRing_GO = grab_Gui_GameObject("app.GUI060010") end
-    -- if not itemBar_GO then itemBar_GO = grab_Gui_GameObject("app.GUI020006") end
-    -- if not guiFront_GO then guiFront_GO = grab_Gui_GameObject("app.GUI060000") end
-    -- if not itemList_GO then itemList_GO = grab_Gui_GameObject("app.GUI020200") end
-    -- if not mapIcons_GO then mapIcons_GO = grab_Gui_GameObject("app.GUI060002") end
-    -- if not sharpness_GO then sharpness_GO = grab_Gui_GameObject("app.GUI020015") end
-    -- if not questList_GO then questList_GO = grab_Gui_GameObject("app.GUI020018") end
-    -- if not mapIcons2_GO then mapIcons2_GO = grab_Gui_GameObject("app.GUI060008") end
-    -- if not mapGround_GO then mapGround_GO = grab_Gui_GameObject("app.GUI060008") end
-    -- if not staminaBar_GO then staminaBar_GO = grab_Gui_GameObject("app.GUI020004") end
-    -- if not playerNames_GO then playerNames_GO = grab_Gui_GameObject("app.GUI020016") end
-    -- if not slingerInfo_GO then slingerInfo_GO = grab_Gui_GameObject("app.GUI020017") end
-    -- if not partyMemberList_GO then partyMemberList_GO = grab_Gui_GameObject("app.GUI020011") end
 
     -- State Debug
     --PrintStates()
@@ -762,27 +930,61 @@ local conditions = {
     }
 
     for _, gui in ipairs(UI_ELEMENTS) do
+        -- Support either a single id or an array of ids
+        local ids_to_process = gui.ids or {gui.id}
+        
+        -- Create table to cache game objects if it doesn't exist
+        if not gui.gameObjects then gui.gameObjects = {} end
+        if gui.last_hide_state == nil then gui.last_hide_state = {} end
+
+
+        local should_hide = conditions[gui.logic]
+
+        -- OVERRIDE: If the user ignored it in the config, never hide it
+        if config.ignored_elements[gui.key] then
+            should_hide = false 
+        end
+
+        for i, id in ipairs(ids_to_process) do
             -- Grab object if it isn't cached
-            if not gui.go then
-                gui.go = grab_Gui_GameObject(gui.id)
+            if not gui.gameObjects[i] then
+                gui.gameObjects[i] = grab_Gui_GameObject(id)
             end
 
-            -- Check the calculated hide state based on its logic group
-            local should_hide = conditions[gui.logic]
-
-            -- OVERRIDE: If the user ignored it in the config, never hide it
-            if config.ignored_elements[gui.key] then
-                should_hide = false 
+            if gui.gameObjects[i] then
+                local current_last_state = gui.last_hide_state[i]
+                
+                -- Check for state transition
+                if current_last_state ~= nil and current_last_state ~= should_hide then
+                    local control = gui.gameObjects[i]:call("getComponent(System.Type)", sdk.typeof("via.gui.Control"))
+                    if control then
+                        local root_window = get_parent_root_window(control)
+                        if root_window then
+                            root_window:call("set_ForceInvisible(System.Boolean)", true)
+                            local timer_name = "RestoreRoot_" .. id
+                            start_Timer(timer_name, 15, function()
+                                if root_window then
+                                    root_window:call("set_ForceInvisible(System.Boolean)", false)
+                                end
+                            end)
+                        end
+                    end
+                end
+                gui.last_hide_state[i] = should_hide
             end
 
             -- Apply the hide using the correct method
             if gui.hide_type == "soft" then
-                hide_GUI(gui.go, should_hide)
+                hide_GUI(gui.gameObjects[i], should_hide)
             elseif gui.hide_type == "hard" then
-                hide_GUI_Hard(gui.go, should_hide)
+                hide_GUI_Hard(gui.gameObjects[i], should_hide)
             end
         end
+    end
 
 
 
 end)
+
+
+-- app.GUI020003.GUITriggered(via.gui.EventTriggerArgs)

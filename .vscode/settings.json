@@ -1,0 +1,10 @@
+{
+    "Lua.diagnostics.globals": [
+        "re",
+        "sdk",
+        "imgui"
+    ],
+    "Lua.diagnostics.disable": [
+        "undefined-global"
+    ]
+}
