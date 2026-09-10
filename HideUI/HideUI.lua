@@ -87,7 +87,8 @@ local UI_ELEMENTS = {
     { key = "AimReticle",      id = "app.GUI020019", name = "Aim Reticle",       hide_type = "hard", logic = "general" },
     { key = "questList",       id = "app.GUI020018", name = "Quest List",        hide_type = "hard", logic = "general" },
     { key = "itemList",        id = "app.GUI020200", name = "Item List",         hide_type = "hard", logic = "general" },
-    { key = "minimap",         ids = {"app.GUI060010", "app.GUI060008", "app.GUI060002"}, name = "Minimap", hide_type = "hard", logic = "general" }
+    { key = "minimap",         ids = {"app.GUI060010", "app.GUI060008"}, name = "Minimap", hide_type = "hard", logic = "general" },
+    { key = "mapIcons",        id = "app.GUI060002", name = "Map Icons",         hide_type = "hard", logic = "general" }
 }
 
 -- ==================================
@@ -311,48 +312,7 @@ local function  SetHideHUD()
     setHideHudMethod:call(guiBaseApp, true)
 end
 
--- ============================
--- HIDE VISUALS ONLY
--- =========
-local function hide_GUI(gui_table, index, should_hide)
-    local game_obj = gui_table.gameObjects[index]
-    local root_control = gui_table.root_controls and gui_table.root_controls[index]
-    if not game_obj then return end
-
-    if root_control then
-        local color = root_control:call("get_ColorScale")
-        if color then
-            log.info(string.format("[HideUI] SUCCESS: Grabbed ColorScale for %s (w: %f). Setting to %f", game_obj:call("get_Name"), color.w, should_hide and 0.0 or 1.0))
-            color.w = should_hide and 0.0 or 1.0
-            root_control:call("set_ColorScale(via.Float4)", color)
-        else
-            log.info("[HideUI] FAILED: root_control returned nil for get_ColorScale on " .. tostring(game_obj:call("get_Name")))
-        end
-    else
-        log.info("[HideUI] FAILED: No root_control found for " .. tostring(game_obj:call("get_Name")))
-    end
-    
-    if active_game_objects == nil then active_game_objects = {} end
-    active_game_objects[game_obj:get_address()] = { current_hide_state = should_hide, root_control = root_control, game_obj = game_obj, hide_type = "soft" }
-end
-
-
-
-local function hide_GUI_Hard(gui_table, index, should_hide)
-    local game_obj = gui_table.gameObjects[index]
-    local root_control = gui_table.root_controls and gui_table.root_controls[index]
-    if not game_obj then return end
-    
-    local logic_state = not should_hide
-    game_obj:call("set_UpdateSelf(System.Boolean)", logic_state)
-
-    if root_control then
-        pcall(function() root_control:call("set_ForceInvisible(System.Boolean)", should_hide) end)
-    end
-
-    if active_game_objects == nil then active_game_objects = {} end
-    active_game_objects[game_obj:get_address()] = { current_hide_state = should_hide, root_control = root_control, game_obj = game_obj, hide_type = "hard" }
-end
+-- No longer needed: active_game_objects and hide_GUI functions have been replaced by direct in-loop enforcement
 
 
 
@@ -787,7 +747,7 @@ local HOOK_DEFS = {
     -- Item Bar Hooks
     { 
         class = "app.GUI020006", 
-        method = "onOpen",
+        method = "isItemAllSlider",
         pre = function() itemBar_Open = true end
     },
 
@@ -795,12 +755,6 @@ local HOOK_DEFS = {
         class = "app.GUI020006", 
         method = "onClose",
         pre = function() itemBar_Open = false end
-    },
-
-    { 
-        class = "app.GUI020006", 
-        method = "toOpen",
-        pre = function() itemBar_Open = true end
     },
 
     { 
@@ -824,22 +778,12 @@ local HOOK_DEFS = {
     -- Pause Menu Hooks
     {
         class = "app.GUI030000",
-        method = "onOpen",
+        method = "updateListItemSubEveryFrame(System.Int32, via.gui.SelectItem, System.Int32)",
         pre = function() pauseMenu_Open = true end 
     },
     { 
         class = "app.GUI030000", 
-        method = "onClose", 
-        pre = function() pauseMenu_Open = false end 
-    },
-    {
-        class = "app.GUI030000",
-        method = "toOpen",
-        pre = function() pauseMenu_Open = true end 
-    },
-    { 
-        class = "app.GUI030000", 
-        method = "toClose", 
+        method = "callbackCancelTab(via.gui.Control, via.gui.SelectItem, System.UInt32)", 
         pre = function() pauseMenu_Open = false end 
     },
 
@@ -931,7 +875,7 @@ end
 ---------------------------------------------------------
 re.on_frame(function()
 
-
+    --PrintStates()
     if not initialized then
         checkIfInCampStartup()
         initialized = true
@@ -1016,6 +960,13 @@ local conditions = {
         end
 
         for i, id in ipairs(ids_to_process) do
+            -- If the object died (e.g. UI was rebuilt during pause menu), clear it from the cache
+            if gui.gameObjects[i] and not gui.gameObjects[i]:call("get_Valid") then
+                gui.gameObjects[i] = nil
+                gui.last_hide_state[i] = nil
+                if gui.root_controls then gui.root_controls[i] = nil end
+            end
+            
             -- Grab object if it isn't cached
             if not gui.gameObjects[i] then
                 local data = grab_Gui_GameObject(id)
@@ -1063,37 +1014,42 @@ local conditions = {
                 
                 -- Check for state transition
                 if current_last_state ~= should_hide then
-                    -- Apply the hide using the correct method
-                    if gui.hide_type == "soft" then
-                        hide_GUI(gui, i, should_hide)
-                    elseif gui.hide_type == "hard" then
-                        hide_GUI_Hard(gui, i, should_hide)
+                    -- Execute state transitions (Hard Hide only needs to run on transition)
+                    if gui.hide_type == "hard" then
+                        local draw_state = not should_hide
+                        gui.gameObjects[i]:call("set_DrawSelf(System.Boolean)", draw_state)
+                        if gui.root_controls and gui.root_controls[i] then
+                            pcall(function() gui.root_controls[i]:call("set_ForceInvisible(System.Boolean)", should_hide) end)
+                        end
+                        -- Special case for map icons, they need updates stopped to hide fully
+                        if id == "app.GUI060002" then
+                            gui.gameObjects[i]:call("set_UpdateSelf(System.Boolean)", draw_state)
+                        end
                     end
                 end
                 gui.last_hide_state[i] = should_hide
-            end
-        end
-    end
-
-
-
-end)
-
-re.on_frame(function()
-    for addr, gui in pairs(active_game_objects) do
-        if gui.root_control then
-            if gui.hide_type == "soft" then
-                local color = gui.root_control:call("get_ColorScale")
-                if color then
-                    color.w = gui.current_hide_state and 0.0 or 1.0
-                    gui.root_control:call("set_ColorScale(via.Float4)", color)
+                
+                -- ALWAYS enforce soft hide (ColorScale) every frame because the engine constantly tries to override it
+                if gui.hide_type == "soft" and gui.root_controls and gui.root_controls[i] then
+                    local color = gui.root_controls[i]:call("get_ColorScale")
+                    if color then
+                        color.w = should_hide and 0.0 or 1.0
+                        gui.root_controls[i]:call("set_ColorScale(via.Float4)", color)
+                    end
                 end
-            else
-                pcall(function() gui.root_control:call("set_ForceInvisible(System.Boolean)", gui.current_hide_state) end)
             end
-        elseif gui.game_obj then
-            gui.game_obj:call("set_DrawSelf(System.Boolean)", not gui.current_hide_state)
         end
     end
+
+
+
 end)
 
+
+--app.GUI030000.updateListItemSubEveryFrame(System.Int32, via.gui.SelectItem, System.Int32) call multi times when pause menu open but when we enter a sub menu the calls stopped
+
+--app.GUI030000.callbackCancelTab(via.gui.Control, via.gui.SelectItem, System.UInt32) call when cloased main pause menu
+
+-- NOTE: When the UI is hidden opening the local map is bugged , the input is block for some reason
+-- when this is called the player want to open a menu(ie local map) its also called when closing the local map though
+-- app.GUIManager.sendActionMessageToGUI(app.gui_action_message.cGUIActionMessageBaseToGUI)
