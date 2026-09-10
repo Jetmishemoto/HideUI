@@ -22,6 +22,7 @@ local mapTransitionDelayFrames = 60 -- Adjust this value based on the average du
 local pauseMenu_Open = false
 local isSharpnessLow = false
 local isHealthLow = false
+local healthTriggered = false
 local isStaminaLow = false
 local questHasStarted = false
 local chatMenu_Open = false
@@ -40,6 +41,8 @@ local QUEST_START_UI_TIMEOUT = 280
 
 local timers = {}
 local active_controls = {}
+local active_game_objects = {}
+local debug_logged_colorscale = {}
 
 -- local Cache variables ={
 
@@ -108,7 +111,7 @@ end
 
 local function save_config()
     json.dump_file(config_filename, config)
-    if config.debug_mode then print("[HideUI] Configuration saved.") end
+    if config.debug_mode then log.info("[HideUI] Configuration saved.") end
 end
 
 local function load_config()
@@ -128,6 +131,7 @@ local function load_config()
 end
 
 load_config()
+config.debug_mode = true -- Forced on for debugging
 
 -- ===========================
 -- REF UI MENU
@@ -174,7 +178,29 @@ end)
 -- ============================
 -- FIND ROOT WINDOW
 -- =========
+local function find_gui_control_recursive(game_obj)
+    if not game_obj then return nil end
+    local control = game_obj:call("getComponent(System.Type)", sdk.typeof("via.gui.Control"))
+    if control then return control end
+
+    local transform = game_obj:call("get_Transform")
+    if not transform then return nil end
+
+    local child_transform = transform:call("get_Child")
+    while child_transform do
+        local child_obj = child_transform:call("get_GameObject")
+        if child_obj then
+            local found = find_gui_control_recursive(child_obj)
+            if found then return found end
+        end
+        child_transform = child_transform:call("get_Next")
+    end
+    
+    return nil
+end
+
 local function get_parent_root_window(control)
+    if not control then return nil end
     local ret = control
     local parent = ret
     while true do
@@ -234,7 +260,10 @@ local function grab_Gui_GameObject(gui_type_string)
     if not array or array:call("get_Length") == 0 then return nil end
     
     local gui_component = array:get_Item(0)
-    return gui_component and gui_component:call("get_GameObject") or nil
+    if gui_component then
+        return { game_obj = gui_component:call("get_GameObject"), gui_base = gui_component }
+    end
+    return nil
 end
 
 -- =============================
@@ -244,7 +273,7 @@ end
 local function get_singleton(type_name)
     local singleton = sdk.get_managed_singleton(type_name)
     if not singleton then
-        print("[HideUI] Warning: Could not get singleton:", type_name)
+        log.info("[HideUI] Warning: Could not get singleton:", type_name)
     end
     return singleton
 end
@@ -257,7 +286,7 @@ local function get_singleton_call(type_name, method_name)
 
     local method = sdk.find_type_definition(type_name):get_method(method_name)
     if not method then
-        print("[HideUI] Warning: Could not find method", method_name, "in", type_name)
+        log.info("[HideUI] Warning: Could not find method", method_name, "in", type_name)
         return nil
     end
     return method:call(singleton)
@@ -274,7 +303,7 @@ local function  SetHideHUD()
 
     local setHideHudMethod = sdk.find_type_definition("app.GUIBaseApp"):get_method("set_HideHud(System.Boolean)")
     if not setHideHudMethod then
-        print("[HideUI] Warning: Could not find method set_HideHud in app.GUIBaseApp")
+        log.info("[HideUI] Warning: Could not find method set_HideHud in app.GUIBaseApp")
         return
     end
 
@@ -285,35 +314,44 @@ end
 -- ============================
 -- HIDE VISUALS ONLY
 -- =========
-local function hide_GUI(game_obj, should_hide)
+local function hide_GUI(gui_table, index, should_hide)
+    local game_obj = gui_table.gameObjects[index]
+    local root_control = gui_table.root_controls and gui_table.root_controls[index]
     if not game_obj then return end
 
-    local control = game_obj:call("getComponent(System.Type)", sdk.typeof("via.gui.Control"))
-
-    if control then
-        control:call("set_ForceInvisible(System.Boolean)", should_hide)
-        active_controls[control:get_address()] = { current_hide_state = should_hide }
+    if root_control then
+        local color = root_control:call("get_ColorScale")
+        if color then
+            log.info(string.format("[HideUI] SUCCESS: Grabbed ColorScale for %s (w: %f). Setting to %f", game_obj:call("get_Name"), color.w, should_hide and 0.0 or 1.0))
+            color.w = should_hide and 0.0 or 1.0
+            root_control:call("set_ColorScale(via.Float4)", color)
+        else
+            log.info("[HideUI] FAILED: root_control returned nil for get_ColorScale on " .. tostring(game_obj:call("get_Name")))
+        end
     else
-        game_obj:call("set_DrawSelf(System.Boolean)", not should_hide)
+        log.info("[HideUI] FAILED: No root_control found for " .. tostring(game_obj:call("get_Name")))
     end
+    
+    if active_game_objects == nil then active_game_objects = {} end
+    active_game_objects[game_obj:get_address()] = { current_hide_state = should_hide, root_control = root_control, game_obj = game_obj, hide_type = "soft" }
 end
 
 
 
-local function hide_GUI_Hard(game_obj, should_hide)
+local function hide_GUI_Hard(gui_table, index, should_hide)
+    local game_obj = gui_table.gameObjects[index]
+    local root_control = gui_table.root_controls and gui_table.root_controls[index]
     if not game_obj then return end
-    local control = game_obj:call("getComponent(System.Type)", sdk.typeof("via.gui.Control"))
-    -- logic_state: if should_hide is true, we want logic OFF (false)
+    
     local logic_state = not should_hide
-
-
     game_obj:call("set_UpdateSelf(System.Boolean)", logic_state)
-    game_obj:call("set_DrawSelf(System.Boolean)", logic_state)
 
-    if control then
-        control:call("set_ForceInvisible(System.Boolean)", should_hide)
-        active_controls[control:get_address()] = { current_hide_state = should_hide }
+    if root_control then
+        pcall(function() root_control:call("set_ForceInvisible(System.Boolean)", should_hide) end)
     end
+
+    if active_game_objects == nil then active_game_objects = {} end
+    active_game_objects[game_obj:get_address()] = { current_hide_state = should_hide, root_control = root_control, game_obj = game_obj, hide_type = "hard" }
 end
 
 
@@ -330,10 +368,10 @@ local function checkIfInCampStartup()
 
     if playerCurrentlyInCamp then
         inCamp = true
-        print("HideUI: Startup - In Camp")
+        log.info("HideUI: Startup - In Camp")
     else
         inCamp = false
-        print("HideUI: Startup - Not In Camp")
+        log.info("HideUI: Startup - Not In Camp")
     end
 end
 
@@ -702,31 +740,12 @@ end
 -- -- end)
 
 local HOOK_DEFS = {
-    {
-        class = "via.gui.Control", method = "update",
-        pre = function(args)
-            local control = sdk.to_managed_object(args[2])
-            if not control then return end
-            
-            local addr = control:get_address()
-            local gui = active_controls[addr]
-            
-            -- If this Control is in our memory cache AND it's marked to hide, force it invisible!
-            if gui and gui.current_hide_state then
-                control:call("set_ForceInvisible(System.Boolean)", true)
-                local game_obj = control:call("get_GameObject")
-                if game_obj then
-                    game_obj:call("set_DrawSelf(System.Boolean)", false)
-                end
-            end
-        end
-    },
     -- Quest Hooks
     {
         class = "app.cQuestStart", method = "enter",
         pre = function()
             questHasStarted = true
-            if config.debug_mode then print("HideUI: Quest Started") end
+            if config.debug_mode then log.info("HideUI: Quest Started") end
             start_Timer("questUI", config.quest_start_timeout, function()
                 questHasStarted, inCamp, keyboardSettings_Open, worldMap_Open = false, false, false, false
             end)
@@ -743,6 +762,7 @@ local HOOK_DEFS = {
         end
     },
 
+    --[[
     {
         class = "app.GUIManager", 
         method = "instantiatePrefab",
@@ -751,6 +771,7 @@ local HOOK_DEFS = {
             start_Timer("startSubMenu", config.submenu_timeout, function() startSubMenu_Open = false end)
         end
     },
+    ]]--
 
     -- Item Bar Hooks
     { 
@@ -763,35 +784,84 @@ local HOOK_DEFS = {
 
     { class = "app.GUI020008PartsPallet", method = "close", pre = function() itemBar_Open = false end },
 
+    -- Item Bar Hooks
+    { 
+        class = "app.GUI020006", 
+        method = "onOpen",
+        pre = function() itemBar_Open = true end
+    },
+
+    { 
+        class = "app.GUI020006", 
+        method = "onClose",
+        pre = function() itemBar_Open = false end
+    },
+
+    { 
+        class = "app.GUI020006", 
+        method = "toOpen",
+        pre = function() itemBar_Open = true end
+    },
+
+    { 
+        class = "app.GUI020006", 
+        method = "toClose",
+        pre = function() itemBar_Open = false end
+    },
+
+    -- Health Bar Trigger
+    --[[
+    {
+        class = "app.GUI020003",
+        method = "GUITriggered",
+        pre = function()
+            healthTriggered = true
+            start_Timer("healthTrigger", config.submenu_timeout, function() healthTriggered = false end)
+        end
+    },
+    ]]--
+
     -- Pause Menu Hooks
     {
         class = "app.GUI030000",
         method = "onOpen",
-        pre = function() pauseMenu_Open = true 
-    end 
-
+        pre = function() pauseMenu_Open = true end 
     },
-
     { 
         class = "app.GUI030000", 
-    method = "onClose", 
-    pre = function() pauseMenu_Open = false end 
+        method = "onClose", 
+        pre = function() pauseMenu_Open = false end 
+    },
+    {
+        class = "app.GUI030000",
+        method = "toOpen",
+        pre = function() pauseMenu_Open = true end 
+    },
+    { 
+        class = "app.GUI030000", 
+        method = "toClose", 
+        pre = function() pauseMenu_Open = false end 
     },
 
     -- Camp Hooks
     { 
         class = "app.GUIManager", 
         method = "requestStage", 
-        pre = function() inCamp = false 
+        pre = function() 
+            inCamp = false 
+            if config.debug_mode then log.info("HideUI: Left Camp") end
         end
     },
 
     { 
         class = "app.GUIManager", 
         method = "requestLifeArea",
-        pre = function(retval) inCamp = true end
+        pre = function() 
+            inCamp = true 
+            if config.debug_mode then log.info("HideUI: Entered Camp") end
+        end
     },
-    
+
     -- Map Hooks
     {
         class = "app.GUI060102", 
@@ -837,10 +907,10 @@ for _, def in ipairs(HOOK_DEFS) do
         if m then
             sdk.hook(m, def.pre, def.post)
         elseif config.debug_mode then
-            print("[HideUI] Failed to hook: Method not found -> " .. def.class .. ":" .. def.method)
+            log.info("[HideUI] Failed to hook: Method not found -> " .. def.class .. ":" .. def.method)
         end
     elseif config.debug_mode then
-        print("[HideUI] Failed to hook: Class not found -> " .. def.class)
+        log.info("[HideUI] Failed to hook: Class not found -> " .. def.class)
     end
 end
 
@@ -848,7 +918,7 @@ end
 ------------------
 
 local function PrintStates()
-    print(string.format("Camp:%s|Item:%s|WMap:%s|LMap:%s|Pause:%s|Sub:%s|HP:%s|Qst:%s|Chat:%s",
+    log.info(string.format("Camp:%s|Item:%s|WMap:%s|LMap:%s|Pause:%s|Sub:%s|HP:%s|Qst:%s|Chat:%s",
         tostring(inCamp), tostring(itemBar_Open), tostring(worldMap_Open), tostring(localMap_Open),
         tostring(pauseMenu_Open), tostring(startSubMenu_Open), tostring(isHealthLow),
         tostring(questHasStarted), tostring(chatMenu_Open)))
@@ -865,7 +935,7 @@ re.on_frame(function()
     if not initialized then
         checkIfInCampStartup()
         initialized = true
-        print("HideUI initialized",initialized)
+        log.info("HideUI initialized",initialized)
     end
 
     -- Initialize timers 
@@ -890,7 +960,7 @@ re.on_frame(function()
         mapTransitioningFrames = mapTransitioningFrames - 1
         if mapTransitioningFrames <= 0 then
             finishMapTransition()
-            print("Map transition complete — unblocking")
+            log.info("Map transition complete — unblocking")
         end
     end
 
@@ -924,7 +994,7 @@ re.on_frame(function()
 
 local conditions = {
         general   = not show_general_ui,
-        health    = not (show_general_ui or isHealthLow),
+        health    = not (show_general_ui or isHealthLow or healthTriggered),
         stamina   = not (show_general_ui or isStaminaLow),
         sharpness = not (show_general_ui or isSharpnessLow)
     }
@@ -948,36 +1018,59 @@ local conditions = {
         for i, id in ipairs(ids_to_process) do
             -- Grab object if it isn't cached
             if not gui.gameObjects[i] then
-                gui.gameObjects[i] = grab_Gui_GameObject(id)
+                local data = grab_Gui_GameObject(id)
+                if data then
+                    gui.gameObjects[i] = data.game_obj
+                    local target_go = data.game_obj
+                    
+                    -- Many UI elements are dynamically managed by a GUIController.
+                    -- We must extract the actual target GameObject from the controller.
+                    local control = nil
+                    if data.gui_base then
+                        -- Direct extraction using the _RootWindow field discovered in Object Explorer
+                        pcall(function()
+                            control = data.gui_base:get_field("_RootWindow")
+                        end)
+                        
+                        -- Fallback to controller extraction if _RootWindow isn't populated
+                        if not control then
+                            pcall(function()
+                                local gui_ctrl = data.gui_base:call("get_GUIController")
+                                if gui_ctrl then
+                                    local real_gui = gui_ctrl:call("get_Component")
+                                    if real_gui then
+                                        local real_go = real_gui:call("get_GameObject")
+                                        if real_go then target_go = real_go end
+                                    end
+                                end
+                            end)
+                        end
+                    end
+                    
+                    if not control then
+                        control = find_gui_control_recursive(target_go)
+                    end
+                    
+                    if control then
+                        gui.root_controls = gui.root_controls or {}
+                        gui.root_controls[i] = get_parent_root_window(control) or control
+                    end
+                end
             end
 
             if gui.gameObjects[i] then
                 local current_last_state = gui.last_hide_state[i]
                 
                 -- Check for state transition
-                if current_last_state ~= nil and current_last_state ~= should_hide then
-                    local control = gui.gameObjects[i]:call("getComponent(System.Type)", sdk.typeof("via.gui.Control"))
-                    if control then
-                        local root_window = get_parent_root_window(control)
-                        if root_window then
-                            root_window:call("set_ForceInvisible(System.Boolean)", true)
-                            local timer_name = "RestoreRoot_" .. id
-                            start_Timer(timer_name, 15, function()
-                                if root_window then
-                                    root_window:call("set_ForceInvisible(System.Boolean)", false)
-                                end
-                            end)
-                        end
+                if current_last_state ~= should_hide then
+                    -- Apply the hide using the correct method
+                    if gui.hide_type == "soft" then
+                        hide_GUI(gui, i, should_hide)
+                    elseif gui.hide_type == "hard" then
+                        hide_GUI_Hard(gui, i, should_hide)
                     end
                 end
                 gui.last_hide_state[i] = should_hide
-            end
-
-            -- Apply the hide using the correct method
-            if gui.hide_type == "soft" then
-                hide_GUI(gui.gameObjects[i], should_hide)
-            elseif gui.hide_type == "hard" then
-                hide_GUI_Hard(gui.gameObjects[i], should_hide)
             end
         end
     end
@@ -986,5 +1079,21 @@ local conditions = {
 
 end)
 
+re.on_frame(function()
+    for addr, gui in pairs(active_game_objects) do
+        if gui.root_control then
+            if gui.hide_type == "soft" then
+                local color = gui.root_control:call("get_ColorScale")
+                if color then
+                    color.w = gui.current_hide_state and 0.0 or 1.0
+                    gui.root_control:call("set_ColorScale(via.Float4)", color)
+                end
+            else
+                pcall(function() gui.root_control:call("set_ForceInvisible(System.Boolean)", gui.current_hide_state) end)
+            end
+        elseif gui.game_obj then
+            gui.game_obj:call("set_DrawSelf(System.Boolean)", not gui.current_hide_state)
+        end
+    end
+end)
 
--- app.GUI020003.GUITriggered(via.gui.EventTriggerArgs)

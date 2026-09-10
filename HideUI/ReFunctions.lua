@@ -56,13 +56,13 @@ local image = nil
 local function hook_method(type_str, method_str, callback)
     local t = sdk.find_type_definition(type_str)
     if not t then
-        print(" Failed to find type:", type_str)
+        log.info(" Failed to find type:", type_str)
         return
     end
 
     local method = t:get_method(method_str)
     if not method then
-        print("Failed to find method:", method_str)
+        log.info("Failed to find method:", method_str)
         return
     end
 
@@ -117,7 +117,7 @@ end
 local function get_singleton(type_name)
     local singleton = sdk.get_managed_singleton(type_name)
     if not singleton then
-        print("[HideUI] Warning: Could not get singleton:", type_name)
+        log.info("[HideUI] Warning: Could not get singleton:", type_name)
     end
     return singleton
 end
@@ -128,7 +128,7 @@ local function get_singleton_call(type_name, method_name)
     if not singleton then return nil end
     local method = sdk.find_type_definition(type_name):get_method(method_name)
     if not method then
-        print("[HideUI] Warning: Could not find method", method_name, "in", type_name)
+        log.info("[HideUI] Warning: Could not find method", method_name, "in", type_name)
         return nil
     end
     return method:call(singleton)
@@ -138,7 +138,7 @@ end
 local function get_type_definition(type_name)
     local t = sdk.find_type_definition(type_name)
     if not t then
-        print("[HideUI] Warning: Could not find type definition: " .. tostring(type_name))
+        log.info("[HideUI] Warning: Could not find type definition: " .. tostring(type_name))
     end
     return t
 end
@@ -146,7 +146,7 @@ end
 local function get_gui_manager()
     local gui_manager = sdk.get_managed_singleton("app.GUIManager")
     if not gui_manager then
-        print("[HideUI] Warning: Could not get app.GUIManager singleton")
+        log.info("[HideUI] Warning: Could not get app.GUIManager singleton")
     end
     return gui_manager
 end
@@ -157,7 +157,7 @@ end
 local function checkIfInCampStartup()
     local guiManager = get_singleton("app.GUIManager")
     if not guiManager then
-        print("GUIManager not available at startup")
+        log.info("GUIManager not available at startup")
         return
     end
 
@@ -166,15 +166,15 @@ local function checkIfInCampStartup()
 
     if playerCurrentlyInCamp then
         inCamp = true
-        print("Player already in camp on script load")
+        log.info("Player already in camp on script load")
     elseif currentStageName then
         inCamp = false
-        print("Player not in camp on script load")
+        log.info("Player not in camp on script load")
     else
         -- Neither returned valid data
         inCamp = false
-        print("Couldn't determine camp status on script load")
-        print("in camp status: " .. tostring(inCamp))
+        log.info("Couldn't determine camp status on script load")
+        log.info("in camp status: " .. tostring(inCamp))
     end
     
 end
@@ -214,11 +214,11 @@ hook_method("app.PauseManager", "onAllRequestExecuted",
     function(retval)
 
     if inTent then
-        print("Don't change pause state if in tent")
+        log.info("Don't change pause state if in tent")
         return
     end
     if questHasStarted then
-        print("Don't change pause state if quest has started")
+        log.info("Don't change pause state if quest has started")
         return
     end
 
@@ -226,10 +226,10 @@ hook_method("app.PauseManager", "onAllRequestExecuted",
     if pauseManager then
         local isPaused = pauseManager:call("get_IsPaused")
         gameIsPaused = isPaused
-        print(isPaused and "PauseManager.Game paused" or "PauseManager.Game resumed")
-        print("PauseManager.IsPaused:", isPaused)
+        log.info(isPaused and "PauseManager.Game paused" or "PauseManager.Game resumed")
+        log.info("PauseManager.IsPaused:", isPaused)
     else
-        print("Could not get PauseManager")
+        log.info("Could not get PauseManager")
     end
     return retval
 end)
@@ -250,7 +250,7 @@ hook_method(
     "execute(app.MenuDef.ExecuteFrom, System.Object, app.cGUICommonMenuItemExecuteOptionBase, ace.IGUIFlowHandle)",
     function(args)
         voiceChatMenu_Open = true
-        print("Voice chat menu executed")
+        log.info("Voice chat menu executed")
     end)
 --
 ------------------------------Voice Chat Menu (Controller)
@@ -260,7 +260,7 @@ hook_method(
     "onOpen",
     function(args)
         voiceChatMenu_Open = true
-        print(" Voice chat list opened (controller)")
+        log.info(" Voice chat list opened (controller)")
     end)
 --------------------------------------------
 ---
@@ -311,14 +311,14 @@ hook_method("app.GUI040000",
         local is_error = args[2] == true
         local error_code = args[3]:call("ToString")
 
-        print("Network error callback:", is_error, error_code)
+        log.info("Network error callback:", is_error, error_code)
 
         if is_error then
             networkErrorActive = true
-            print("Network error detected, locking UI transitions.")
+            log.info("Network error detected, locking UI transitions.")
         else
             networkErrorActive = false
-            print("Network error cleared.")
+            log.info("Network error cleared.")
         end
 end)
 
@@ -330,7 +330,7 @@ hook_method("app.GUIFlowChatLogCommunication",
 "start(app.GUIFlowChatLogCommunication.BOOT, ace.IGUIFlowHandle)",
     function(args)
         chatMenu_Open = true
-        print("Chat menu opened")
+        log.info("Chat menu opened")
 end)
 
 -- hook_method("ace.GUIManager","refreshChatLog",
@@ -352,15 +352,15 @@ local hook_definitions = {
     --Camp Area
         {"app.GUIManager", "requestLifeArea", function()
             inCamp = true
-            print("Entered camp")
-            print("HUD Active")
+            log.info("Entered camp")
+            log.info("HUD Active")
 
         end },
         --Laving Camp Area
         { "app.GUIManager", "requestStage", function()
             inCamp = false
-            print("Left camp")
-            print("HUD Inactive")
+            log.info("Left camp")
+            log.info("HUD Inactive")
             end },
     ----------------------------------------------------------------------------------------------------------
     -----------------
@@ -380,7 +380,7 @@ local hook_definitions = {
             startedDialogue = false;
             localMap_Open = false;
             chatMenu_Open = false;
-            print("RadarMask.enter ")
+            log.info("RadarMask.enter ")
 
         end },
 
@@ -390,7 +390,7 @@ local hook_definitions = {
             startMenu_Open = true;
             startSubMenu_Open = false;
             keyboardSettings_Open = false;
-            print("Opened pause menu")
+            log.info("Opened pause menu")
 
         end },
     ---Pause Menu Close
@@ -398,8 +398,8 @@ local hook_definitions = {
             startMenu_Open =false
             uiMask_Open = false
             equipList_Open = false
-            print("Closed pause menu")
-            print("SubMenu Closed")
+            log.info("Closed pause menu")
+            log.info("SubMenu Closed")
 
         end },
     -----------------------------
@@ -414,11 +414,11 @@ local hook_definitions = {
                 questFinishing = false
 
                 --print("SubMenuTimer:", startSubMenuTimer)
-                print("Start SubMenu Closed — timer ended")
+                log.info("Start SubMenu Closed — timer ended")
             end)
             --startSubMenuTimer = START_SUB_MENU_TIMEOUT
-            print("Start SubMenu Open — timer started")
-            print("Start SubMenu Open")
+            log.info("Start SubMenu Open — timer started")
+            log.info("Start SubMenu Open")
 
         end },
 
@@ -433,12 +433,12 @@ local hook_definitions = {
     --EquipList
         { "app.GUI080001","onOpen", function()
             equipList_Open = true
-            print("Opened EquipList menu")
+            log.info("Opened EquipList menu")
 
         end },
         { "app.GUI080001","onClose", function()
             equipList_Open = false
-            print("Closed EquipList menu")
+            log.info("Closed EquipList menu")
 
         end },
 
@@ -452,7 +452,7 @@ local hook_definitions = {
                 start_timer("photoMode", PHOTO_MODE_TIMEOUT, function()
                     photoMode_Open = false
                     keyboardSettings_Open = false
-                    print("Photo Mode timeout — hiding UI")
+                    log.info("Photo Mode timeout — hiding UI")
             end)
                 --print("Photograph Mode Opened")
         end },
@@ -460,12 +460,12 @@ local hook_definitions = {
     --Keyboard Settings---------------------------------------------------
         { "app.GUI030000","executeItem(app.user_data.StartMenuData.ItemBase)",function()
             keyboardSettings_Open = true
-            print("KeyboardSettings Opened")
+            log.info("KeyboardSettings Opened")
         end },
 
 
         ----Bounty List ----------------------------------------------------
-        { "app.GUI090800", "onOpen", function() bountyMenu_Open = false; print("Closed pause menu") end },
+        { "app.GUI090800", "onOpen", function() bountyMenu_Open = false; log.info("Closed pause menu") end },
     -------------------------------------------------------------------------------
     ---
     -------------------
@@ -492,11 +492,11 @@ local hook_definitions = {
             localMap_Open = true
 
             if localMapFromWorldMap then
-                print("Switching from World Map → Local Map")
+                log.info("Switching from World Map → Local Map")
                 -- stay in world map mode until confirmed transition is done
                 return
             end
-            print("Local Map Opened")
+            log.info("Local Map Opened")
 
         end },
     -- Closed LocalMap------------------------------
@@ -539,25 +539,25 @@ local hook_definitions = {
     ----------------------------------------------------------------------------------------------------------
     ---
     -- Item Bar---------------------------------------------------
-        { "app.GUI020008", "onOpenApp", function() itemBar_Open = true; print("Item bar opened") end },
-        { "app.GUI020008PartsPallet", "close", function() itemBar_Open = false; print("Item bar closed") end },
+        { "app.GUI020008", "onOpenApp", function() itemBar_Open = true; log.info("Item bar opened") end },
+        { "app.GUI020008PartsPallet", "close", function() itemBar_Open = false; log.info("Item bar closed") end },
     ----------------------------------------------------------------------------------
     ---
     -- Entering Tent-------------------------------------------------------
         { "app.GUIManager", "startTentMenu", function()
             inTent = true
-            print("In Tent")
+            log.info("In Tent")
         end },
 
         --Exiting Tent
         { "app.cGUISystemModuleOpenTentMenu", "exitTent(app.FacilityMenu.TYPE)",function()
                 inTent = false
-                print("Exiting Tent")
+                log.info("Exiting Tent")
         end },
 
         ---------
         -- VoiceChatMenu----------------------------------------------
-        { "app.GUI040001", "guiDestroy", function() voiceChatMenu_Open = false; print("Voice chat list Closed") end },
+        { "app.GUI040001", "guiDestroy", function() voiceChatMenu_Open = false; log.info("Voice chat list Closed") end },
         -----------------------------
 
         -- Quest Start
@@ -566,18 +566,18 @@ local hook_definitions = {
             start_timer("questUI", QUEST_START_UI_TIMEOUT, function()
                 questHasStarted = false
                 keyboardSettings_Open = false
-                print("Quest UI timeout — hiding UI")
+                log.info("Quest UI timeout — hiding UI")
             end)
                 startSubMenu_Open = false
                 virtualMouseMenu_Open = false
-                print("Quest Started Showing UI")
+                log.info("Quest Started Showing UI")
         end },
         ---------------------
         -- Quest End
         { "app.GUI020202", "onOpen", function()
             questHasStarted = false
             questFinishing = true
-            print("Quest Ended")
+            log.info("Quest Ended")
 
         end },
 
