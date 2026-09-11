@@ -28,6 +28,7 @@ local questHasStarted = false
 local chatMenu_Open = false
 local startSubMenu_Open = false
 local actionMessage_Triggered = false
+local isPreparingWindow_Alive = true
 
 local frame_counter = 0
 
@@ -98,6 +99,7 @@ local UI_ELEMENTS = {
 local config_filename = "HideUI_Config.json" -- Saves directly to reframework/data/
 local config = {
     mod_enabled = true,
+    fade_speed = 0.05,
     health_threshold = 0.75,
     stamina_threshold = 0.40,
     sharpness_threshold = 0.80,
@@ -158,6 +160,7 @@ re.on_draw_ui(function()
         _, config.health_threshold = imgui.slider_float("Health Threshold", config.health_threshold, 0.0, 1.0)
         _, config.stamina_threshold = imgui.slider_float("Stamina Threshold", config.stamina_threshold, 0.0, 1.0)
         _, config.sharpness_threshold = imgui.slider_float("Sharpness Threshold", config.sharpness_threshold, 0.0, 1.0)
+        _, config.fade_speed = imgui.slider_float("UI Fade Speed", config.fade_speed, 0.01, 1.0)
 
 
         imgui.separator()
@@ -616,18 +619,6 @@ end
 -- end)
 
 
--- -- pasue Menus
--- hook_method("app.GUI030000", "onOpen",function()
---     pauseMenu_Open = true
---     print("HideUI: Pause Menu Opened")
-
--- end)
-
-
--- hook_method("app.GUI030000", "onClose",function()
---     pauseMenu_Open = false
---     print("HideUI: Pause Menu Closed")
--- end)
 
 
 
@@ -737,7 +728,13 @@ local HOOK_DEFS = {
         end 
     },
 
-    { class = "app.GUI020008PartsPallet", method = "close", pre = function() itemBar_Open = false end },
+    { 
+        class = "app.GUI020008PartsPallet", 
+        method = "close",
+        pre = function() itemBar_Open = false 
+        
+        end 
+    },
 
     -- Item Bar Hooks
     { 
@@ -771,15 +768,43 @@ local HOOK_DEFS = {
     ]]--
 
     -- Pause Menu Hooks
+
+    
+
+-- hook_method("app.GUI030000", "onOpen",function()
+--     pauseMenu_Open = true
+--     print("HideUI: Pause Menu Opened")
+
+-- end)
+
+
+-- hook_method("app.GUI030000", "onClose",function()
+--     pauseMenu_Open = false
+--     print("HideUI: Pause Menu Closed")
+-- end)
+    {
+        class = "app.GUI030000",
+        method = "onOpen",
+        pre = function() if config.debug_mode then log.info("HideUI: Pause Menu Opened") end
+        pauseMenu_Open = true end 
+    },
     {
         class = "app.GUI030000",
         method = "updateListItemSubEveryFrame(System.Int32, via.gui.SelectItem, System.Int32)",
-        pre = function() pauseMenu_Open = true end 
+        pre = function() 
+            pauseMenu_Open = true 
+            if timers and timers["pauseMenuCloseDelay"] then
+                timers["pauseMenuCloseDelay"] = nil
+            end
+        end 
     },
     { 
         class = "app.GUI030000", 
         method = "callbackCancelTab(via.gui.Control, via.gui.SelectItem, System.UInt32)", 
-        pre = function() pauseMenu_Open = false end 
+        pre = function() 
+            -- Delay the hide transition by 60 frames (1s) to prevent input block
+            start_Timer("pauseMenuCloseDelay", 60, function() pauseMenu_Open = false end)
+        end 
     },
 
     -- Camp Hooks
@@ -844,6 +869,16 @@ local HOOK_DEFS = {
             -- Give the UI 60 frames (1 second) to wake up and process queued input
             start_Timer("actionMessage", 60, function() actionMessage_Triggered = false end)
         end
+    },
+    {
+        class = "app.GUIManager",
+        method = "isCanOpenPreparingWindow",
+        pre = function()
+            isPreparingWindow_Alive = true
+            itemBar_Open = false
+            -- Watchdog timer: if this function stops being called for 3 frames, it means a menu opened
+            start_Timer("preparingWindow_Heartbeat", 3, function() isPreparingWindow_Alive = false end)
+        end
     }
 }
 
@@ -869,6 +904,7 @@ local function PrintStates()
     log.info(string.format("Camp:%s|Item:%s|WMap:%s|LMap:%s|Pause:%s|Sub:%s|HP:%s|Qst:%s|Chat:%s",
         tostring(inCamp), tostring(itemBar_Open), tostring(worldMap_Open), tostring(localMap_Open),
         tostring(pauseMenu_Open), tostring(startSubMenu_Open), tostring(isHealthLow),
+        tostring(isPreparingWindow_Alive), 
         tostring(questHasStarted), tostring(chatMenu_Open)))
     
 end
@@ -909,7 +945,7 @@ end)
 ---------------------------------------------------------
 re.on_frame(function()
 
-    --PrintStates()
+    PrintStates()
     if not initialized then
         checkIfInCampStartup()
         initialized = true
@@ -968,6 +1004,7 @@ re.on_frame(function()
     or mapTransitioning
     or startSubMenu_Open
     or actionMessage_Triggered
+    or (not isPreparingWindow_Alive)
 
 
 
@@ -1067,7 +1104,22 @@ local conditions = {
                 if gui.hide_type == "soft" and gui.root_controls and gui.root_controls[i] then
                     local color = gui.root_controls[i]:call("get_ColorScale")
                     if color then
-                        color.w = should_hide and 0.0 or 1.0
+                        gui.current_alpha = gui.current_alpha or {}
+                        
+                        local current = gui.current_alpha[i] or color.w
+                        local target = should_hide and 0.0 or 1.0
+                        
+                        if current ~= target then
+                            local fade = config.fade_speed or 0.05
+                            if current < target then
+                                current = math.min(current + fade, target)
+                            else
+                                current = math.max(current - fade, target)
+                            end
+                            gui.current_alpha[i] = current
+                        end
+                        
+                        color.w = current
                         gui.root_controls[i]:call("set_ColorScale(via.Float4)", color)
                     end
                 end
