@@ -27,6 +27,7 @@ local isStaminaLow = false
 local questHasStarted = false
 local chatMenu_Open = false
 local startSubMenu_Open = false
+local actionMessage_Triggered = false
 
 local frame_counter = 0
 
@@ -96,6 +97,7 @@ local UI_ELEMENTS = {
 -- ===========
 local config_filename = "HideUI_Config.json" -- Saves directly to reframework/data/
 local config = {
+    mod_enabled = true,
     health_threshold = 0.75,
     stamina_threshold = 0.40,
     sharpness_threshold = 0.80,
@@ -141,6 +143,11 @@ config.debug_mode = true -- Forced on for debugging
 re.on_draw_ui(function()
 
     if imgui.tree_node("HideUI Settings") then
+
+        local changed, new_val = imgui.checkbox("Enable HideUI Mod", config.mod_enabled)
+        if changed then
+            config.mod_enabled = new_val
+        end
 
         if imgui.button("Save Configuration") then save_config() end
 
@@ -293,9 +300,6 @@ local function get_singleton_call(type_name, method_name)
     return method:call(singleton)
 end
 
-
---app.GUIBaseApp.set_HideHud(System.Boolean)
---app.GUIBaseApp.get_HideHud()
 
 
 local function  SetHideHUD()
@@ -722,16 +726,7 @@ local HOOK_DEFS = {
         end
     },
 
-    --[[
-    {
-        class = "app.GUIManager", 
-        method = "instantiatePrefab",
-        pre = function()
-            startSubMenu_Open = true
-            start_Timer("startSubMenu", config.submenu_timeout, function() startSubMenu_Open = false end)
-        end
-    },
-    ]]--
+   
 
     -- Item Bar Hooks
     { 
@@ -840,6 +835,15 @@ local HOOK_DEFS = {
             end
             mapTransitioning, localMap_Open = false, false
         end
+    },
+    {
+        class = "app.GUIManager",
+        method = "sendActionMessageToGUI(app.gui_action_message.cGUIActionMessageBaseToGUI)",
+        pre = function()
+            actionMessage_Triggered = true
+            -- Give the UI 60 frames (1 second) to wake up and process queued input
+            start_Timer("actionMessage", 60, function() actionMessage_Triggered = false end)
+        end
     }
 }
 
@@ -869,7 +873,37 @@ local function PrintStates()
     
 end
 
--- re.on_script_reset(function()
+re.on_script_reset(function()
+    log.info("[HideUI] Script disabled/reset. Restoring UI visibility...")
+    for _, gui in ipairs(UI_ELEMENTS) do
+        local ids_to_process = gui.ids or {gui.id}
+        for i, id in ipairs(ids_to_process) do
+            if gui.gameObjects and gui.gameObjects[i] and gui.gameObjects[i]:call("get_Valid") then
+                
+                -- Restore Hard Hide properties
+                if gui.hide_type == "hard" then
+                    gui.gameObjects[i]:call("set_DrawSelf(System.Boolean)", true)
+                    if gui.root_controls and gui.root_controls[i] then
+                        pcall(function() gui.root_controls[i]:call("set_ForceInvisible(System.Boolean)", false) end)
+                    end
+                    if id == "app.GUI060002" then
+                        gui.gameObjects[i]:call("set_UpdateSelf(System.Boolean)", true)
+                    end
+                end
+
+                -- Restore Soft Hide properties
+                if gui.hide_type == "soft" and gui.root_controls and gui.root_controls[i] then
+                    local color = gui.root_controls[i]:call("get_ColorScale")
+                    if color then
+                        color.w = 1.0
+                        gui.root_controls[i]:call("set_ColorScale(via.Float4)", color)
+                    end
+                end
+                
+            end
+        end
+    end
+end)
 
 -- MAIN -------------------------
 ---------------------------------------------------------
@@ -933,14 +967,15 @@ re.on_frame(function()
     or questHasStarted
     or mapTransitioning
     or startSubMenu_Open
+    or actionMessage_Triggered
 
 
 
 local conditions = {
-        general   = not show_general_ui,
-        health    = not (show_general_ui or isHealthLow or healthTriggered),
-        stamina   = not (show_general_ui or isStaminaLow),
-        sharpness = not (show_general_ui or isSharpnessLow)
+        general   = config.mod_enabled and not show_general_ui,
+        health    = config.mod_enabled and not (show_general_ui or isHealthLow or healthTriggered),
+        stamina   = config.mod_enabled and not (show_general_ui or isStaminaLow),
+        sharpness = config.mod_enabled and not (show_general_ui or isSharpnessLow)
     }
 
     for _, gui in ipairs(UI_ELEMENTS) do
@@ -1021,7 +1056,6 @@ local conditions = {
                         if gui.root_controls and gui.root_controls[i] then
                             pcall(function() gui.root_controls[i]:call("set_ForceInvisible(System.Boolean)", should_hide) end)
                         end
-                        -- Special case for map icons, they need updates stopped to hide fully
                         if id == "app.GUI060002" then
                             gui.gameObjects[i]:call("set_UpdateSelf(System.Boolean)", draw_state)
                         end
