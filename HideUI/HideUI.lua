@@ -31,6 +31,7 @@ local actionMessage_Triggered = false
 local isPreparingWindow_Alive = true
 local isActiveQuest = false
 local questHasEnded = false
+local isWeaponSheathed = true
 
 local frame_counter = 0
 
@@ -87,6 +88,23 @@ local UI_ELEMENTS = {
     { key = "guiBG",           id = "app.GUI060001", name = "GUI Background",    hide_type = "soft", logic = "general" },
     { key = "guiFront",        id = "app.GUI060000", name = "GUI Front",         hide_type = "soft", logic = "general" },
     
+    -- Weapon Gauges (Grouped)
+    { 
+        key = "weaponGauges",
+        ids = { 
+            "app.GUI020034", -- Charge Blade
+            "app.GUI020024", -- Gunlance
+            "app.GUI020027", -- Insect Glaive
+            "app.GUI020029", -- Switch Axe
+            "app.GUI020023", -- Long Sword
+            "app.GUI020033", -- Dual Blades
+            "app.GUI020030"  -- Hunting Horn
+        }, 
+        name = "Weapon Gauges", 
+        hide_type = "soft", 
+        logic = "weapon" 
+    },
+    
     -- Hard Hide Elements
     { key = "AimReticle",      id = "app.GUI020019", name = "Aim Reticle",       hide_type = "hard", logic = "general" },
     { key = "questList",       id = "app.GUI020018", name = "Quest List",        hide_type = "hard", logic = "general" },
@@ -103,6 +121,7 @@ local config = {
     mod_enabled = true,
     fade_speed = 0.05,
     menu_close_delay = 60,
+    hide_weapon_sheathed = true,
     health_threshold = 0.75,
     stamina_threshold = 0.40,
     sharpness_threshold = 0.80,
@@ -165,6 +184,8 @@ re.on_draw_ui(function()
         
         local changed_delay, new_delay = imgui.slider_int("Menu Wake-Up Delay (Frames)", config.menu_close_delay, 60, 300)
         if changed_delay then config.menu_close_delay = new_delay end
+        
+        _, config.hide_weapon_sheathed = imgui.checkbox("Hide Weapon Gauges when Sheathed", config.hide_weapon_sheathed)
         
         imgui.spacing()
 
@@ -414,6 +435,7 @@ local function updateHunterStatus()
     
     if not char then
         isHealthLow, isStaminaLow, isSharpnessLow = false, false, false
+        isWeaponSheathed = true
         return
     end
 
@@ -441,6 +463,11 @@ local function updateHunterStatus()
             resetAllUIStates()
         end
         isActiveQuest = currentActive
+    end
+    
+    local is_weapon_on = player:call("get_IsWeaponOn")
+    if is_weapon_on ~= nil then
+        isWeaponSheathed = not is_weapon_on
     end
 end
 
@@ -1067,7 +1094,8 @@ local conditions = {
         general   = config.mod_enabled and not show_general_ui,
         health    = config.mod_enabled and not (show_general_ui or isHealthLow or healthTriggered),
         stamina   = config.mod_enabled and not (show_general_ui or isStaminaLow),
-        sharpness = config.mod_enabled and not (show_general_ui or isSharpnessLow)
+        sharpness = config.mod_enabled and not (show_general_ui or isSharpnessLow),
+        weapon    = config.mod_enabled and not (show_general_ui or not config.hide_weapon_sheathed or not isWeaponSheathed)
     }
 
     for _, gui in ipairs(UI_ELEMENTS) do
