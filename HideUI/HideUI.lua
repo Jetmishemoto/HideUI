@@ -1,5 +1,5 @@
 
-local _VERSION = "v3.0.1"
+local _VERSION = "v3.0.2"
 local re = re
 local sdk = sdk
 local imgui = imgui
@@ -1137,9 +1137,9 @@ re.on_frame(function()
 
 local conditions = {
         general   = config.mod_enabled and not is_menu_open and (not show_general_ui or isChargingBow),
-        health    = config.mod_enabled and not is_menu_open and (not (show_general_ui or isHealthLow or healthTriggered) or isChargingBow),
-        stamina   = config.mod_enabled and not is_menu_open and (not (show_general_ui or isStaminaLow) or isChargingBow),
-        sharpness = config.mod_enabled and not is_menu_open and (not (show_general_ui or isSharpnessLow) or isChargingBow),
+        health    = config.mod_enabled and not is_menu_open and (not (show_general_ui or isHealthLow or healthTriggered) or (isChargingBow and not (isHealthLow or healthTriggered))),
+        stamina   = config.mod_enabled and not is_menu_open and (not (show_general_ui or isStaminaLow) or (isChargingBow and not isStaminaLow)),
+        sharpness = config.mod_enabled and not is_menu_open and (not (show_general_ui or isSharpnessLow) or (isChargingBow and not isSharpnessLow)),
         weapon    = config.mod_enabled and not is_menu_open and (not (show_general_ui or not config.hide_weapon_sheathed or not isWeaponSheathed) or isChargingBow),
         aimUI     = config.mod_enabled and not is_menu_open and (not (show_general_ui or not config.hide_weapon_sheathed or not isWeaponSheathed) or (isChargingBow and not config.keep_aim_ui_visible))
     }
