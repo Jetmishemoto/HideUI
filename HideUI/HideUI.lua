@@ -1,5 +1,5 @@
 
-local _VERSION = "v3.0.0"
+local _VERSION = "v3.0.1"
 local re = re
 local sdk = sdk
 local imgui = imgui
@@ -32,6 +32,7 @@ local isPreparingWindow_Alive = true
 local isActiveQuest = false
 local questHasEnded = false
 local isWeaponSheathed = true
+local weaponActionFrames = 0
 
 local frame_counter = 0
 
@@ -465,9 +466,13 @@ local function updateHunterStatus()
         isActiveQuest = currentActive
     end
     
-    local is_weapon_on = player:call("get_IsWeaponOn")
+    local is_weapon_on = char:call("get_IsWeaponOn")
     if is_weapon_on ~= nil then
         isWeaponSheathed = not is_weapon_on
+    end
+    
+    if weaponActionFrames > 0 then
+        isWeaponSheathed = false
     end
 end
 
@@ -1026,6 +1031,10 @@ end)
 -- MAIN -------------------------
 ---------------------------------------------------------
 re.on_frame(function()
+    
+    if weaponActionFrames > 0 then
+        weaponActionFrames = weaponActionFrames - 1
+    end
 
     --PrintStates()
     if not initialized then
@@ -1222,3 +1231,31 @@ end)
 -- NOTE: When the UI is hidden opening the local map is bugged , the input is block for some reason
 -- when this is called the player want to open a menu(ie local map) its also called when closing the local map though
 -- app.GUIManager.sendActionMessageToGUI(app.gui_action_message.cGUIActionMessageBaseToGUI)
+
+-- =========================================================
+-- MAIN ACTION HOOK (Weapon Attack Detection Fallback)
+-- =========================================================
+local action_id_type = sdk.find_type_definition("ace.ACTION_ID")
+local change_action_method = sdk.find_type_definition("app.HunterCharacter")
+if change_action_method then
+    change_action_method = change_action_method:get_method("changeActionRequest(app.AppActionDef.LAYER, ace.ACTION_ID, System.Boolean)")
+end
+
+if change_action_method and action_id_type then
+    sdk.hook(change_action_method, function(args)
+        local layer = sdk.to_int64(args[3])
+        local action_id = args[4]
+
+        -- We usually only care about the base animation layer (0)
+        if layer ~= 0 or not action_id then return end
+
+        local category = sdk.get_native_field(action_id, action_id_type, "_Category")
+        
+        -- Category 2 is Weapon Attacks / Combat Actions
+        if category == 2 then
+            -- Set weapon gauge to show for at least 180 frames (approx 3 seconds) after an attack starts
+            weaponActionFrames = 180
+        end
+    end)
+end
+
