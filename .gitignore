@@ -292,3 +292,9 @@ scratch/HudController 0.3.3 2758 0.3.3 2026-08-11T04-44Z L6CUKZQuE/reframework/d
 scratch/HudController 0.3.3 2758 0.3.3 2026-08-11T04-44Z L6CUKZQuE/reframework/data/HudController/user_scripts/_example_reveal_health_bar_on_condition.lua
 scratch/HudController 0.3.3 2758 0.3.3 2026-08-11T04-44Z L6CUKZQuE/reframework/plugins/hudcontroller_util.dll
 ArmorEffectActions.lua
+HunterVFXControl 4842 0.0.4 2026-09-11T19-58Z pgSL5MsAF/reframework/autorun/VFX Unleashed.lua
+HunterVFXControl 4842 0.0.4 2026-09-11T19-58Z pgSL5MsAF/reframework/autorun/VFXUnleashed/blade_catalog.lua
+HunterVFXControl 4842 0.0.4 2026-09-11T19-58Z pgSL5MsAF/reframework/autorun/VFXUnleashed/domain_darkness.lua
+HunterVFXControl 4842 0.0.4 2026-09-11T19-58Z pgSL5MsAF/reframework/autorun/VFXUnleashed/effect_catalog.lua
+HunterVFXControl 4842 0.0.4 2026-09-11T19-58Z pgSL5MsAF/reframework/autorun/VFXUnleashed/replacement_catalog.lua
+HunterVFXControl 4842 0.0.4 2026-09-11T19-58Z pgSL5MsAF/reframework/autorun/VFXUnleashed/twelve_blade_purgatory.lua

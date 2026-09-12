@@ -28,11 +28,13 @@ local questHasStarted = false
 local chatMenu_Open = false
 local startSubMenu_Open = false
 local actionMessage_Triggered = false
-local isPreparingWindow_Alive = true
 local isActiveQuest = false
 local questHasEnded = false
 local isWeaponSheathed = true
 local weaponActionFrames = 0
+local currentActionCategory = 0
+local isChargingBow = false
+local bowAimingFrames = 0
 
 local frame_counter = 0
 
@@ -73,6 +75,12 @@ local debug_logged_colorscale = {}
     -- local AimReticle = "app.GUI020019"
 --}
 
+
+
+--app.HunterCharacter.onGunnerAimAdjust(via.vec3, app.cGunnerAimAdjustParam, System.Nullable`1<via.vec3>) -- only callled when the player is aiming gun or bow
+
+--app.HunterCharacter.doSubActionEnter(ace.ACTION_ID) -- callled when the player is using a sub action like shooting the bow
+
 local UI_ELEMENTS = {
 
     -- Elements that are hidden based on health/stamina/sharpness thresholds, but still take up space (soft hide)
@@ -106,8 +114,19 @@ local UI_ELEMENTS = {
         logic = "weapon" 
     },
     
+    { 
+        key = "aimGauges",
+        ids = { 
+            "app.GUI020031", -- Bow Reticle
+            "app.GUI020019", -- Gun Reticle
+            "app.GUI020007"  -- Bow Coatings & Ammo Slider
+        }, 
+        name = "Aim UI", 
+        hide_type = "soft", 
+        logic = "aimUI" 
+    },
+    
     -- Hard Hide Elements
-    { key = "AimReticle",      id = "app.GUI020019", name = "Aim Reticle",       hide_type = "hard", logic = "general" },
     { key = "questList",       id = "app.GUI020018", name = "Quest List",        hide_type = "hard", logic = "general" },
     { key = "itemList",        id = "app.GUI020200", name = "Item List",         hide_type = "hard", logic = "general" },
     { key = "minimap",         ids = {"app.GUI060010", "app.GUI060008"}, name = "Minimap", hide_type = "hard", logic = "general" },
@@ -123,6 +142,8 @@ local config = {
     fade_speed = 0.05,
     menu_close_delay = 60,
     hide_weapon_sheathed = true,
+    hide_bow_charging = true,
+    keep_aim_ui_visible = true,
     health_threshold = 0.75,
     stamina_threshold = 0.40,
     sharpness_threshold = 0.80,
@@ -186,7 +207,18 @@ re.on_draw_ui(function()
         local changed_delay, new_delay = imgui.slider_int("Menu Wake-Up Delay (Frames)", config.menu_close_delay, 60, 300)
         if changed_delay then config.menu_close_delay = new_delay end
         
-        _, config.hide_weapon_sheathed = imgui.checkbox("Hide Weapon Gauges when Sheathed", config.hide_weapon_sheathed)
+        changed, config.hide_weapon_sheathed = imgui.checkbox("Hide Weapon Gauges When Sheathed", config.hide_weapon_sheathed)
+        if changed then save_config() end
+        
+        changed, config.hide_bow_charging = imgui.checkbox("Force Hide UI While Charging Bow", config.hide_bow_charging)
+        if changed then save_config() end
+        
+        if config.hide_bow_charging then
+            imgui.indent(20)
+            changed, config.keep_aim_ui_visible = imgui.checkbox("Keep Aim UI (Reticle/Coatings) Visible", config.keep_aim_ui_visible)
+            if changed then save_config() end
+            imgui.unindent(20)
+        end
         
         imgui.spacing()
 
@@ -429,6 +461,7 @@ local function updateStatusCheck(character_obj, component_name, get_func, max_fu
     return false
 end
 
+
 local function updateHunterStatus()
     local pm = sdk.get_managed_singleton("app.PlayerManager")
     local player = pm and pm:call("getMasterPlayer")
@@ -471,8 +504,17 @@ local function updateHunterStatus()
         isWeaponSheathed = not is_weapon_on
     end
     
-    if weaponActionFrames > 0 then
+    if weaponActionFrames > 0 or currentActionCategory == 2 then
         isWeaponSheathed = false
+    end
+    
+    local weapon_type = char:call("get_WeaponType")
+    isChargingBow = false
+    -- weapon_type == 11 is Bow, weapon_type == 12 is LBG, 13 is HBG
+    if config.hide_bow_charging and (weapon_type == 11 or weapon_type == 12 or weapon_type == 13) then
+        if currentActionCategory == 2 or bowAimingFrames > 0 then
+            isChargingBow = true
+        end
     end
 end
 
@@ -954,17 +996,7 @@ local HOOK_DEFS = {
         pre = function()
             actionMessage_Triggered = true
             -- Give the UI enough frames to wake up and process queued input
-            start_Timer("actionMessage", config.menu_close_delay, function() actionMessage_Triggered = false end)
-        end
-    },
-    {
-        class = "app.GUIManager",
-        method = "isCanOpenPreparingWindow",
-        pre = function()
-            isPreparingWindow_Alive = true
-            itemBar_Open = false
-            -- Watchdog timer: if this function stops being called for 3 frames, it means a menu opened
-            start_Timer("preparingWindow_Heartbeat", 3, function() isPreparingWindow_Alive = false end)
+            start_Timer("actionMessage_WakeUp", config.menu_close_delay, function() actionMessage_Triggered = false end)
         end
     }
 }
@@ -991,7 +1023,6 @@ local function PrintStates()
     log.info(string.format("Camp:%s|Item:%s|WMap:%s|LMap:%s|Pause:%s|Sub:%s|HP:%s|Qst:%s|Chat:%s",
         tostring(inCamp), tostring(itemBar_Open), tostring(worldMap_Open), tostring(localMap_Open),
         tostring(pauseMenu_Open), tostring(startSubMenu_Open), tostring(isHealthLow),
-        tostring(isPreparingWindow_Alive), 
         tostring(questHasStarted), tostring(chatMenu_Open)))
     
 end
@@ -1055,6 +1086,10 @@ re.on_frame(function()
         updateHunterStatus()
     end
 
+    if bowAimingFrames > 0 then
+        bowAimingFrames = bowAimingFrames - 1
+    end
+
 
 
     --------------
@@ -1083,28 +1118,30 @@ re.on_frame(function()
     -- State Debug
     --PrintStates()
 
-    local show_general_ui =
-        inCamp
-    or itemBar_Open
+    local is_menu_open =
+        itemBar_Open
     or chatMenu_Open
     or localMap_Open
     or worldMap_Open
     or pauseMenu_Open
+    or startSubMenu_Open
+
+    local show_general_ui =
+        inCamp
     or questHasStarted
     or questHasEnded
     or mapTransitioning
-    or startSubMenu_Open
     or actionMessage_Triggered
-    or (not isPreparingWindow_Alive)
 
 
 
 local conditions = {
-        general   = config.mod_enabled and not show_general_ui,
-        health    = config.mod_enabled and not (show_general_ui or isHealthLow or healthTriggered),
-        stamina   = config.mod_enabled and not (show_general_ui or isStaminaLow),
-        sharpness = config.mod_enabled and not (show_general_ui or isSharpnessLow),
-        weapon    = config.mod_enabled and not (show_general_ui or not config.hide_weapon_sheathed or not isWeaponSheathed)
+        general   = config.mod_enabled and not is_menu_open and (not show_general_ui or isChargingBow),
+        health    = config.mod_enabled and not is_menu_open and (not (show_general_ui or isHealthLow or healthTriggered) or isChargingBow),
+        stamina   = config.mod_enabled and not is_menu_open and (not (show_general_ui or isStaminaLow) or isChargingBow),
+        sharpness = config.mod_enabled and not is_menu_open and (not (show_general_ui or isSharpnessLow) or isChargingBow),
+        weapon    = config.mod_enabled and not is_menu_open and (not (show_general_ui or not config.hide_weapon_sheathed or not isWeaponSheathed) or isChargingBow),
+        aimUI     = config.mod_enabled and not is_menu_open and (not (show_general_ui or not config.hide_weapon_sheathed or not isWeaponSheathed) or (isChargingBow and not config.keep_aim_ui_visible))
     }
 
     for _, gui in ipairs(UI_ELEMENTS) do
@@ -1251,6 +1288,9 @@ if change_action_method and action_id_type then
 
         local category = sdk.get_native_field(action_id, action_id_type, "_Category")
         
+        -- Cache current action category
+        currentActionCategory = category
+
         -- Category 2 is Weapon Attacks / Combat Actions
         if category == 2 then
             -- Set weapon gauge to show for at least 180 frames (approx 3 seconds) after an attack starts
@@ -1258,4 +1298,13 @@ if change_action_method and action_id_type then
         end
     end)
 end
+
+local on_gunner_aim = change_action_method and sdk.find_type_definition("app.HunterCharacter"):get_method("onGunnerAimAdjust(via.vec3, app.cGunnerAimAdjustParam, System.Nullable`1<via.vec3>)")
+if on_gunner_aim then
+    sdk.hook(on_gunner_aim, function(args)
+        bowAimingFrames = 5
+    end)
+end
+
+
 
