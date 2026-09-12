@@ -1,5 +1,5 @@
 
-local _VERSION = "3.0.0"
+local _VERSION = "v3.0.0"
 local re = re
 local sdk = sdk
 local imgui = imgui
@@ -29,6 +29,8 @@ local chatMenu_Open = false
 local startSubMenu_Open = false
 local actionMessage_Triggered = false
 local isPreparingWindow_Alive = true
+local isActiveQuest = false
+local questHasEnded = false
 
 local frame_counter = 0
 
@@ -100,6 +102,7 @@ local config_filename = "HideUI_Config.json" -- Saves directly to reframework/da
 local config = {
     mod_enabled = true,
     fade_speed = 0.05,
+    menu_close_delay = 60,
     health_threshold = 0.75,
     stamina_threshold = 0.40,
     sharpness_threshold = 0.80,
@@ -144,7 +147,7 @@ config.debug_mode = true -- Forced on for debugging
 
 re.on_draw_ui(function()
 
-    if imgui.tree_node("HideUI Settings") then
+    if imgui.tree_node("AutoHideUI->" .. _VERSION) then
 
         local changed, new_val = imgui.checkbox("Enable HideUI Mod", config.mod_enabled)
         if changed then
@@ -155,20 +158,37 @@ re.on_draw_ui(function()
 
         imgui.separator()
 
-        imgui.text("Threshold Settings (0% to 100%) - Set the percentage at which the respective UI element will show. For example, if Health Threshold is set to 0.75, the health bar will always show when health is below 75%.")
+        imgui.text_colored("Threshold Settings 0 --> 100-  Set the percentage at which the respective UI element will show. ", 0xFFAAAAAA)
+        imgui.text_colored("For example, if Health Threshold is set to 0.75, the health bar will always show when health is below 75 percent..", 0xFFAAAAAA)
         
+        _, config.fade_speed = imgui.slider_float("UI Fade Speed", config.fade_speed, 0.01, 1.0)
+        
+        local changed_delay, new_delay = imgui.slider_int("Menu Wake-Up Delay (Frames)", config.menu_close_delay, 60, 300)
+        if changed_delay then config.menu_close_delay = new_delay end
+        
+        imgui.spacing()
+
         _, config.health_threshold = imgui.slider_float("Health Threshold", config.health_threshold, 0.0, 1.0)
         _, config.stamina_threshold = imgui.slider_float("Stamina Threshold", config.stamina_threshold, 0.0, 1.0)
         _, config.sharpness_threshold = imgui.slider_float("Sharpness Threshold", config.sharpness_threshold, 0.0, 1.0)
-        _, config.fade_speed = imgui.slider_float("UI Fade Speed", config.fade_speed, 0.01, 1.0)
 
 
         imgui.separator()
         -- Dynamic Menu for Ignored Elements
         if imgui.tree_node("Ignored UI Elements (Always Visible)") then
 
-            imgui.text_colored
-            ("Check a box to prevent the script from hiding that element.", 0xFFAAAAAA)
+            imgui.text_colored("Check a box to prevent the script from hiding that element.", 0xFFAAAAAA)
+            imgui.spacing()
+            
+            if imgui.button("Check All (Ignore)") then
+                for _, el in ipairs(UI_ELEMENTS) do config.ignored_elements[el.key] = true end
+            end
+            imgui.same_line()
+            if imgui.button("Uncheck All (Hide)") then
+                for _, el in ipairs(UI_ELEMENTS) do config.ignored_elements[el.key] = false end
+            end
+            imgui.text("▽ UI Elements ▽")
+        
             for _, el in ipairs(UI_ELEMENTS) do
                 local changed, val = imgui.checkbox(el.name, config.ignored_elements[el.key])
                 if changed then 
@@ -326,25 +346,37 @@ end
 -- =====================
 -- STARTUP CHECK
 -- =========================================================
-local function checkIfInCampStartup()
-    local guiManager = get_singleton("app.GUIManager")
-    if not guiManager then return end
 
-    local currentStageName = guiManager:call("requestStage")
-    local playerCurrentlyInCamp = guiManager:call("requestLifeArea")
+-- local function checkIfInCampStartup()
+--     local guiManager = get_singleton("app.GUIManager")
+--     if not guiManager then return end
 
-    if playerCurrentlyInCamp then
-        inCamp = true
-        log.info("HideUI: Startup - In Camp")
-    else
-        inCamp = false
-        log.info("HideUI: Startup - Not In Camp")
-    end
+--     local currentStageName = guiManager:call("requestStage")
+--     local playerCurrentlyInCamp = guiManager:call("requestLifeArea")
+
+--     if playerCurrentlyInCamp then
+--         inCamp = true
+--         log.info("HideUI: Startup - In Camp")
+--     else
+--         inCamp = false
+--         log.info("HideUI: Startup - Not In Camp")
+--     end
+-- end
+
+
+
+
+
+local function resetAllUIStates()
+    itemBar_Open = false
+    worldMap_Open = false
+    localMap_Open = false
+    pauseMenu_Open = false
+    startSubMenu_Open = false
+    mapTransitioning = false
+    actionMessage_Triggered = false
+    chatMenu_Open = false
 end
-
-
-
-
 
 local function updateStatusCheck(character_obj, component_name, get_func, max_func, threshold)
     if component_name == "weapon" then
@@ -359,8 +391,17 @@ local function updateStatusCheck(character_obj, component_name, get_func, max_fu
         local comp = status and status:get_field(component_name)
         if component_name == "_Health" and comp then comp = comp:get_field("<HealthMgr>k__BackingField") end
         if comp then
-            local ratio = comp:call(get_func) / comp:call(max_func)
-            return ratio < threshold
+            local current = comp:call(get_func)
+            local max = comp:call(max_func)
+            if current and max and max > 0 then
+                if component_name == "_Health" and current <= 0.0 then 
+                    resetAllUIStates()
+                    log.info("[HideUI] You died! Get it together!! → [Resetting UI states]")
+                    return true 
+                end
+                local ratio = current / max
+                return ratio <= threshold
+            end
         end
     end
     return false
@@ -380,6 +421,27 @@ local function updateHunterStatus()
     isHealthLow = updateStatusCheck(char, "_Health", "get_Health", "get_MaxHealth", config.health_threshold)
     isStaminaLow = updateStatusCheck(char, "_Stamina", "get_Stamina", "get_MaxStamina", config.stamina_threshold)
     isSharpnessLow = updateStatusCheck(char, "weapon", "get_SharpnessVal", "get_MaxSharpnessVal", config.sharpness_threshold)
+    
+    local in_life_area = char:call("get_IsInLifeArea")
+    if in_life_area ~= nil then
+        inCamp = in_life_area
+    end
+    
+    local mm = sdk.get_managed_singleton("app.MissionManager")
+    if mm then
+        local currentActive = mm:call("get_IsActiveQuest")
+        local currentPlaying = mm:call("get_IsPlayingQuest")
+        
+        -- The 60-second Quest Complete phase is exactly when the quest is Active, but not Playing!
+        -- This inherently handles the 60s timer for us, and instantly drops false if the player quits.
+        questHasEnded = (currentActive and not currentPlaying)
+
+        -- If the quest fully transitions out of Active (either returned to camp after 60s, or quit early)
+        if isActiveQuest == true and currentActive == false then
+            resetAllUIStates()
+        end
+        isActiveQuest = currentActive
+    end
 end
 
 
@@ -701,6 +763,7 @@ local HOOK_DEFS = {
         pre = function()
             questHasStarted = true
             if config.debug_mode then log.info("HideUI: Quest Started") end
+            log.info("HideUI: Quest Started -> Remember no fainting..... [Resetting UI states for " .. config.quest_start_timeout .. " seconds]")
             start_Timer("questUI", config.quest_start_timeout, function()
                 questHasStarted, inCamp, keyboardSettings_Open, worldMap_Open = false, false, false, false
             end)
@@ -736,7 +799,7 @@ local HOOK_DEFS = {
         end 
     },
 
-    -- Item Bar Hooks
+    
     { 
         class = "app.GUI020006", 
         method = "isItemAllSlider",
@@ -769,19 +832,11 @@ local HOOK_DEFS = {
 
     -- Pause Menu Hooks
 
-    
 
--- hook_method("app.GUI030000", "onOpen",function()
---     pauseMenu_Open = true
---     print("HideUI: Pause Menu Opened")
-
--- end)
-
-
--- hook_method("app.GUI030000", "onClose",function()
---     pauseMenu_Open = false
---     print("HideUI: Pause Menu Closed")
--- end)
+    -- hook_method("app.GUI030000", "onClose",function()
+    --     pauseMenu_Open = false
+    --     print("HideUI: Pause Menu Closed")
+    -- end)
     {
         class = "app.GUI030000",
         method = "onOpen",
@@ -802,8 +857,8 @@ local HOOK_DEFS = {
         class = "app.GUI030000", 
         method = "callbackCancelTab(via.gui.Control, via.gui.SelectItem, System.UInt32)", 
         pre = function() 
-            -- Delay the hide transition by 60 frames (1s) to prevent input block
-            start_Timer("pauseMenuCloseDelay", 60, function() pauseMenu_Open = false end)
+            -- Delay the hide transition by config frames to prevent input block
+            start_Timer("pauseMenuCloseDelay", config.menu_close_delay, function() pauseMenu_Open = false end)
         end 
     },
 
@@ -830,7 +885,7 @@ local HOOK_DEFS = {
     {
         class = "app.GUI060102", 
         method = "onOpen",
-        pre = function() worldMap_Open, localMapFromWorldMap, mapTransitioning, mapTransitioningFrames = true, true, true, 60 end
+        pre = function() worldMap_Open, localMapFromWorldMap, mapTransitioning, mapTransitioningFrames = true, true, true, config.menu_close_delay end
     },
     {
         class = "app.GUIManager", 
@@ -843,12 +898,12 @@ local HOOK_DEFS = {
     {
         class = "app.cGUIMapFlowActive", 
         method = "enter",
-        pre = function() mapTransitioning, localMap_Open, mapTransitioningFrames = true, true, 60 end
+        pre = function() mapTransitioning, localMap_Open, mapTransitioningFrames = true, true, config.menu_close_delay end
     },
     {
         class = "app.cGUIMapController", 
         method = "requestOpen",
-        pre = function() localMap_Open, mapTransitioning, mapTransitioningFrames = true, true, 60 end
+        pre = function() localMap_Open, mapTransitioning, mapTransitioningFrames = true, true, config.menu_close_delay end
     },
     {
         class = "app.cGUI060000Recommend", 
@@ -866,8 +921,8 @@ local HOOK_DEFS = {
         method = "sendActionMessageToGUI(app.gui_action_message.cGUIActionMessageBaseToGUI)",
         pre = function()
             actionMessage_Triggered = true
-            -- Give the UI 60 frames (1 second) to wake up and process queued input
-            start_Timer("actionMessage", 60, function() actionMessage_Triggered = false end)
+            -- Give the UI enough frames to wake up and process queued input
+            start_Timer("actionMessage", config.menu_close_delay, function() actionMessage_Triggered = false end)
         end
     },
     {
@@ -945,11 +1000,10 @@ end)
 ---------------------------------------------------------
 re.on_frame(function()
 
-    PrintStates()
+    --PrintStates()
     if not initialized then
-        checkIfInCampStartup()
         initialized = true
-        log.info("HideUI initialized",initialized)
+        log.info("HideUI initialized->" .. _VERSION,initialized)
     end
 
     -- Initialize timers 
@@ -1001,6 +1055,7 @@ re.on_frame(function()
     or worldMap_Open
     or pauseMenu_Open
     or questHasStarted
+    or questHasEnded
     or mapTransitioning
     or startSubMenu_Open
     or actionMessage_Triggered
@@ -1050,7 +1105,7 @@ local conditions = {
                     -- We must extract the actual target GameObject from the controller.
                     local control = nil
                     if data.gui_base then
-                        -- Direct extraction using the _RootWindow field discovered in Object Explorer
+                        -- Direct extraction using the _RootWindow field 
                         pcall(function()
                             control = data.gui_base:get_field("_RootWindow")
                         end)
